@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<section>
+  <h2>Open Positions</h2>
+  <table>
+    <tr><th>Symbol</th><th>Strategy</th><th>Qty</th><th>Entry</th><th>Stop</th><th>Target</th><th>Opened</th></tr>
+    {% for row in positions %}
+    <tr><td>{{ row.symbol }}</td><td>{{ row.strategy_id }}</td><td>{{ row.quantity }}</td><td>{{ row.entry_price }}</td><td>{{ row.stop_price }}</td><td>{{ row.target_price }}</td><td>{{ row.opened_at }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+<section>
+  <h2>Recent Alerts</h2>
+  <ul>
+    {% for alert in alerts %}
+    <li>[{{ alert.severity }}] {{ alert.message }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

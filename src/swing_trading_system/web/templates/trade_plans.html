@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<section>
+  <h2>Ready Trade Plans</h2>
+  <form method="post" action="/trade-plans/execute">
+    <label>Submit live paper orders <input type="checkbox" name="submit" value="true" /></label>
+    <button type="submit">Execute</button>
+  </form>
+  {% if execution_result %}<pre>{{ execution_result }}</pre>{% endif %}
+  <table>
+    <tr><th>ID</th><th>Symbol</th><th>Strategy</th><th>Qty</th><th>Entry</th><th>Stop</th><th>Target</th><th>Status</th></tr>
+    {% for row in trade_plans %}
+    <tr><td>{{ row.trade_plan_id }}</td><td>{{ row.symbol }}</td><td>{{ row.strategy_id }}</td><td>{{ row.quantity }}</td><td>{{ row.entry_price }}</td><td>{{ row.stop_price }}</td><td>{{ row.target_price }}</td><td>{{ row.status }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

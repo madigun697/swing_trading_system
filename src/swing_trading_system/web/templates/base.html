@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Swing Trading System</title>
+    <link rel="stylesheet" href="/static/css/app.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Swing Trading System</h1>
+      <nav>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/candidates">Candidates</a>
+        <a href="/backtest">Backtest</a>
+        <a href="/trade-plans">Trade Plans</a>
+        <a href="/positions">Positions & Alerts</a>
+      </nav>
+    </header>
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

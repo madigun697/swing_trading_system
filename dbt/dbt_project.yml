@@ -1,0 +1,22 @@
+name: swing_trading_system
+version: 1.0.0
+config-version: 2
+
+profile: swing_trading_system
+
+model-paths: ["models"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  swing_trading_system:
+    +materialized: view
+    staging:
+      +schema: swing_raw
+      +materialized: view
+      +tags: ["stg"]
+    marts:
+      +schema: swing_mart
+      +materialized: table
+      +tags: ["mart"]
