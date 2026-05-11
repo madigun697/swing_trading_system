@@ -105,6 +105,27 @@ class SharedMarketRepository:
         except Exception as exc:
             return self.classify_error(exc)
 
+    def fetch_latest_trade_date(self) -> date | None:
+        with postgres_connection(self.settings) as conn, conn.cursor() as cur:
+            cur.execute("SELECT MAX(trade_date) AS latest_trade_date FROM stg.stg_daily_prices")
+            row = cur.fetchone() or {}
+            return row.get("latest_trade_date")
+
+    def fetch_top_liquid_symbols(self, as_of_date: date, limit: int = 10) -> list[str]:
+        with postgres_connection(self.settings) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT symbol
+                FROM stg.stg_daily_prices
+                WHERE trade_date = %(as_of_date)s
+                GROUP BY symbol
+                ORDER BY MAX(dollar_volume) DESC NULLS LAST, symbol ASC
+                LIMIT %(limit)s
+                """,
+                {"as_of_date": as_of_date, "limit": limit},
+            )
+            return [row["symbol"] for row in cur.fetchall()]
+
     def fetch_daily_prices(
         self,
         symbol: str,

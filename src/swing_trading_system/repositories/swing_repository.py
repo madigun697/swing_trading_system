@@ -18,6 +18,25 @@ class SwingRepository:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings
 
+    def get_bootstrap_counts(self) -> dict[str, int]:
+        with postgres_connection(self.settings) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM swing_meta.strategy_config) AS strategy_configs,
+                    (SELECT COUNT(*) FROM swing_meta.screening_run) AS screening_runs,
+                    (SELECT COUNT(*) FROM swing_meta.signal) AS signals,
+                    (SELECT COUNT(*) FROM swing_mart.swing_feature_store) AS feature_rows
+                """
+            )
+            row = cur.fetchone() or {}
+            return {
+                "strategy_configs": int(row.get("strategy_configs", 0)),
+                "screening_runs": int(row.get("screening_runs", 0)),
+                "signals": int(row.get("signals", 0)),
+                "feature_rows": int(row.get("feature_rows", 0)),
+            }
+
     def create_strategy_config(
         self,
         strategy_name: str,

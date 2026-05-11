@@ -6,9 +6,11 @@ import argparse
 import json
 from typing import Any, Sequence
 
+from swing_trading_system.backfill import backfill_sprint2_bootstrap
 from swing_trading_system.config import Settings
 from swing_trading_system.db import check_database_connection, initialize_schema
 from swing_trading_system.repositories.shared_market import SharedMarketRepository
+from swing_trading_system.repositories.swing_repository import SwingRepository
 from swing_trading_system.storage import check_minio_connection
 
 
@@ -19,6 +21,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("check-connection", help="Check PostgreSQL and MinIO connectivity")
     subparsers.add_parser("check-readiness", help="Check required Quant shared relations")
     subparsers.add_parser("init-db", help="Initialize Swing-owned schemas and tables")
+    subparsers.add_parser("backfill-bootstrap", help="Seed Sprint 2 bootstrap data into Swing-owned schemas")
     return parser
 
 
@@ -60,6 +63,15 @@ def handle_init_db(settings: Settings | None = None) -> tuple[int, dict[str, Any
     return (0, {"ok": True, **result})
 
 
+def handle_backfill_bootstrap(settings: Settings | None = None) -> tuple[int, dict[str, Any]]:
+    settings = settings or Settings()
+    result = backfill_sprint2_bootstrap(
+        market_repository=SharedMarketRepository(settings),
+        swing_repository=SwingRepository(settings),
+    )
+    return (0, {"ok": True, **result.to_dict()})
+
+
 def run(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -71,6 +83,8 @@ def run(argv: Sequence[str] | None = None) -> int:
         code, payload = handle_check_readiness(settings)
     elif args.command == "init-db":
         code, payload = handle_init_db(settings)
+    elif args.command == "backfill-bootstrap":
+        code, payload = handle_backfill_bootstrap(settings)
     else:  # pragma: no cover - argparse prevents this path.
         parser.error(f"unknown command: {args.command}")
 

@@ -9,6 +9,7 @@ def test_build_parser_accepts_required_commands() -> None:
     assert parser.parse_args(["check-connection"]).command == "check-connection"
     assert parser.parse_args(["check-readiness"]).command == "check-readiness"
     assert parser.parse_args(["init-db"]).command == "init-db"
+    assert parser.parse_args(["backfill-bootstrap"]).command == "backfill-bootstrap"
 
 
 def test_check_connection_handler_reports_ok(monkeypatch) -> None:
@@ -36,3 +37,17 @@ def test_check_readiness_handler_uses_repository(monkeypatch) -> None:
     assert code == 0
     assert payload["code"] == "ready"
     assert payload["checked_relations"] == ["stg.foo"]
+
+
+def test_backfill_bootstrap_handler(monkeypatch) -> None:
+    class FakeResult:
+        def to_dict(self):
+            return {"skipped": False, "feature_rows_upserted": 2}
+
+    monkeypatch.setattr(cli, "backfill_sprint2_bootstrap", lambda market_repository, swing_repository: FakeResult())
+
+    code, payload = cli.handle_backfill_bootstrap()
+
+    assert code == 0
+    assert payload["ok"] is True
+    assert payload["feature_rows_upserted"] == 2
