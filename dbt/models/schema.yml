@@ -1,9 +1,0 @@
-version: 2
-
-models:
-  - name: swing_feature_store
-    columns:
-      - name: symbol
-        tests: [not_null]
-      - name: trade_date
-        tests: [not_null]

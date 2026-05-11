@@ -83,19 +83,19 @@
   - `quant_trading_system/src/quant_data_platform/web/services/alpaca_service.py`
 
 ## Steps
-- [x] **Phase 0 — 아키텍처 계약 확정**: `docs/architecture_contract.md`에 Swing/Quant 경계, shared relation, 포트/배포 계약을 문서화했다.
-- [x] **Phase 1 — 프로젝트 부트스트랩**: `uv` 기반 프로젝트, `.env.example`, `docker-compose.yml`, `infra/web/Dockerfile`, 테스트 골격, 기본 FastAPI 앱을 생성했다.
-- [x] **Phase 2 — 공유 데이터 접근 계층 구축**: `config.py`, `storage.py`, `repositories/shared_market.py`, `repositories/swing_repository.py`를 만들어 shared PostgreSQL/MinIO 접근 계층을 구성했다.
-- [x] **Phase 3 — Swing 전용 스키마 설계**: `sql/01_swing_schema.sql`에 `swing_meta`, `swing_mart`, `swing_raw`와 핵심 테이블을 정의했다.
-- [x] **Phase 4 — 스크리너 1차 구현**: `screening/`에 공용 `stg.*` 기반 유동성/추세/상대강도/ATR/거래량 확장 스크리너를 구현했다.
-- [x] **Phase 5 — 전략 엔진 1차 구현**: `strategies/pullback.py`, `strategies/breakout.py`에 2개 전략을 구현했다.
+- [ ] **Phase 0 — 아키텍처 계약 확정**: `docs/architecture_contract.md`에 Swing/Quant 경계, shared relation, 포트/배포 계약을 문서화했다.
+- [ ] **Phase 1 — 프로젝트 부트스트랩**: `uv` 기반 프로젝트, `.env.example`, `docker-compose.yml`, `infra/web/Dockerfile`, 테스트 골격, 기본 FastAPI 앱을 생성했다.
+- [ ] **Phase 2 — 공유 데이터 접근 계층 구축**: `config.py`, `storage.py`, `repositories/shared_market.py`, `repositories/swing_repository.py`를 만들어 shared PostgreSQL/MinIO 접근 계층을 구성했다.
+- [ ] **Phase 3 — Swing 전용 스키마 설계**: `sql/01_swing_schema.sql`에 `swing_meta`, `swing_mart`, `swing_raw`와 핵심 테이블을 정의했다.
+- [ ] **Phase 4 — 스크리너 1차 구현**: `screening/`에 공용 `stg.*` 기반 유동성/추세/상대강도/ATR/거래량 확장 스크리너를 구현했다.
+- [ ] **Phase 5 — 전략 엔진 1차 구현**: `strategies/pullback.py`, `strategies/breakout.py`에 2개 전략을 구현했다.
   - 눌림목(pullback): 상승 추세 유지 + 최근 조정 + 지지/ATR 기준 손절
   - 돌파(breakout): 박스/고점 돌파 + 거래량 증가 + 손절/추적손절
-- [x] **Phase 6 — 백테스트 엔진 구축**: `backtest/engine.py`에 event-driven 일봉 상태 머신 백테스터를 구현했다.
-- [x] **Phase 7 — 웹 UI 1차 구현**: `web/`에 readiness, 후보, 백테스트, trade plan, position/alert 화면을 FastAPI/Jinja로 구현했다.
-- [x] **Phase 8 — 모니터링/알림**: `monitoring/`과 `end-of-day` 파이프라인에 후보 digest/포지션 alert 및 Slack/Telegram/Email notifier를 추가했다.
-- [x] **Phase 9 — Paper execution 연동**: `execution/`에 Alpaca paper execution adapter와 trade plan 제출 흐름을 추가했다.
-- [x] **Phase 10 — 운영 안정화**: `dbt/`, `tests/`, `docs/operations_runbook.md`, CLI healthcheck/init-db/end-of-day 절차를 추가했다.
+- [ ] **Phase 6 — 백테스트 엔진 구축**: `backtest/engine.py`에 event-driven 일봉 상태 머신 백테스터를 구현했다.
+- [ ] **Phase 7 — 웹 UI 1차 구현**: `web/`에 readiness, 후보, 백테스트, trade plan, position/alert 화면을 FastAPI/Jinja로 구현했다.
+- [ ] **Phase 8 — 모니터링/알림**: `monitoring/`과 `end-of-day` 파이프라인에 후보 digest/포지션 alert 및 Slack/Telegram/Email notifier를 추가했다.
+- [ ] **Phase 9 — Paper execution 연동**: `execution/`에 Alpaca paper execution adapter와 trade plan 제출 흐름을 추가했다.
+- [ ] **Phase 10 — 운영 안정화**: `dbt/`, `tests/`, `docs/operations_runbook.md`, CLI healthcheck/init-db/end-of-day 절차를 추가했다.
 
 ## Verification
 - 인프라/포트

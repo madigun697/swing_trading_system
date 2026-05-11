@@ -1,9 +1,0 @@
-version: 2
-
-sources:
-  - name: stg
-    schema: stg
-    tables:
-      - name: stg_daily_prices
-      - name: stg_security_master
-      - name: stg_benchmark_series
