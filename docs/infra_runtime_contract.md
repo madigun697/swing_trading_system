@@ -77,13 +77,13 @@ POSTGRES_PORT=55432
 
 ### Remote shared infra
 ```bash
-INFRA_HOST=192.168.0.10
+INFRA_HOST=<remote-infra-host>
 POSTGRES_PORT=55432
 ```
 
 ### Explicit override 예외
 ```bash
-INFRA_HOST=192.168.0.10
+INFRA_HOST=<remote-infra-host>
 POSTGRES_HOST=db.internal.example
 MINIO_ENDPOINT=http://object.internal.example:9000
 ```

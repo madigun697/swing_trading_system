@@ -1,0 +1,26 @@
+services:
+  swing-web:
+    build:
+      context: .
+      dockerfile: infra/web/Dockerfile
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-quant}
+      POSTGRES_USER: ${POSTGRES_USER:-quant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quant}
+      INFRA_HOST: ${INFRA_HOST:-localhost}
+      POSTGRES_PORT: ${POSTGRES_PORT:-55432}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      SWING_WEB_PORT: ${SWING_WEB_PORT:-8401}
+    ports:
+      - "${SWING_WEB_PORT:-8401}:8401"
+    command:
+      - uv
+      - run
+      - uvicorn
+      - swing_trading_system.web.app:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8401"
