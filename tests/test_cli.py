@@ -1,4 +1,8 @@
+from argparse import Namespace
+from datetime import date
+
 from swing_trading_system import cli
+from swing_trading_system.config import Settings
 from swing_trading_system.db import DatabaseCheck
 from swing_trading_system.repositories.shared_market import ReadinessStatus
 
@@ -10,6 +14,7 @@ def test_build_parser_accepts_required_commands() -> None:
     assert parser.parse_args(["check-readiness"]).command == "check-readiness"
     assert parser.parse_args(["init-db"]).command == "init-db"
     assert parser.parse_args(["backfill-bootstrap"]).command == "backfill-bootstrap"
+    assert parser.parse_args(["run-daily", "--as-of", "2026-01-01", "--dry-run"]).command == "run-daily"
 
 
 def test_check_connection_handler_reports_ok(monkeypatch) -> None:
@@ -37,6 +42,41 @@ def test_check_readiness_handler_uses_repository(monkeypatch) -> None:
     assert code == 0
     assert payload["code"] == "ready"
     assert payload["checked_relations"] == ["stg.foo"]
+
+
+def test_run_daily_dry_run_handler(monkeypatch) -> None:
+    class FakeMarketRepository:
+        def __init__(self, settings=None) -> None:
+            pass
+
+        def fetch_latest_trade_date(self):
+            return date(2026, 1, 1)
+
+        def fetch_top_liquid_symbols(self, as_of_date, limit=10):
+            return ["AAPL", "MSFT"]
+
+    class FakePipelineResult:
+        def to_dict(self):
+            return {"screening_run_id": 0, "feature_count": 2, "candidate_count": 1, "signal_count": 1, "symbols": ["AAPL", "MSFT"]}
+
+    class FakePipeline:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def run_daily(self, **kwargs):
+            assert kwargs["as_of_date"] == date(2026, 1, 1)
+            return FakePipelineResult()
+
+    monkeypatch.setattr(cli, "SharedMarketRepository", FakeMarketRepository)
+    monkeypatch.setattr(cli, "ScreeningPipeline", FakePipeline)
+
+    args = Namespace(as_of="2026-01-01", symbols=None, max_universe=2, dry_run=True)
+    code, payload = cli.handle_run_daily(args, Settings(_env_file=None))
+
+    assert code == 0
+    assert payload["dry_run"] is True
+    assert payload["feature_count"] == 2
+    assert payload["would_write"] == {"feature_rows": 0, "signals": 0, "completed_runs": 0}
 
 
 def test_backfill_bootstrap_handler(monkeypatch) -> None:

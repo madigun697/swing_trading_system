@@ -1,0 +1,51 @@
+"""Breakout strategy v1."""
+
+from __future__ import annotations
+
+from swing_trading_system.screening.screener import ScreeningCandidate
+from swing_trading_system.strategies.base import StrategyContext, StrategySignal, calculate_position_size
+
+
+class BreakoutStrategy:
+    name = "breakout"
+
+    def generate(self, candidate: ScreeningCandidate, context: StrategyContext) -> StrategySignal | None:
+        feature = candidate.features
+        close = feature.close
+        atr = feature.atr_14
+        previous_high = feature.previous_high_20
+        if not candidate.passed or not feature.trend_up or close is None or atr is None or previous_high in (None, 0):
+            return None
+        breakout_ratio = (close / previous_high) - 1.0
+        if breakout_ratio < -0.005:
+            return None
+        if (feature.volume_ratio_20d or 0.0) < 1.2:
+            return None
+        if feature.atr_pct is not None and feature.atr_pct > 0.18:
+            return None
+        entry = close
+        stop = min(previous_high - (0.5 * atr), entry - (1.5 * atr))
+        if stop <= 0 or stop >= entry:
+            return None
+        risk_per_share, position_size = calculate_position_size(entry, stop, context)
+        if risk_per_share <= 0 or position_size <= 0:
+            return None
+        target = entry + (2.0 * risk_per_share)
+        return StrategySignal(
+            symbol=candidate.symbol,
+            signal_date=context.as_of_date,
+            strategy=self.name,
+            entry_price=round(entry, 4),
+            stop_price=round(stop, 4),
+            target_price=round(target, 4),
+            risk_per_share=round(risk_per_share, 4),
+            position_size=round(position_size, 4),
+            score=candidate.score,
+            reason="volume_confirmed_breakout",
+            details={
+                **candidate.to_signal_details(),
+                "breakout_ratio": breakout_ratio,
+                "volume_ratio_20d": feature.volume_ratio_20d,
+                "risk_multiple_target": 2.0,
+            },
+        )

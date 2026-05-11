@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import date
 from typing import Any, Sequence
 
 from swing_trading_system.backfill import backfill_sprint2_bootstrap
@@ -11,7 +12,12 @@ from swing_trading_system.config import Settings
 from swing_trading_system.db import check_database_connection, initialize_schema
 from swing_trading_system.repositories.shared_market import SharedMarketRepository
 from swing_trading_system.repositories.swing_repository import SwingRepository
+from swing_trading_system.screening.input_loader import ScreeningInputLoader
+from swing_trading_system.screening.pipeline import ScreeningPipeline
+from swing_trading_system.screening.screener import Screener, ScreenerConfig
+from swing_trading_system.screening.universe import UniverseSelector
 from swing_trading_system.storage import check_minio_connection
+from swing_trading_system.strategies import BreakoutStrategy, PullbackStrategy, StrategyContext
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,6 +28,12 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("check-readiness", help="Check required Quant shared relations")
     subparsers.add_parser("init-db", help="Initialize Swing-owned schemas and tables")
     subparsers.add_parser("backfill-bootstrap", help="Seed Sprint 2 bootstrap data into Swing-owned schemas")
+
+    run_daily = subparsers.add_parser("run-daily", help="Run Sprint 2 screening and strategy pipeline")
+    run_daily.add_argument("--as-of", dest="as_of", help="As-of date in YYYY-MM-DD format; defaults to latest shared trade date")
+    run_daily.add_argument("--symbols", help="Comma-separated symbols; defaults to top liquid universe")
+    run_daily.add_argument("--max-universe", type=int, default=None, help="Maximum universe size")
+    run_daily.add_argument("--dry-run", action="store_true", help="Compute results without writing to Swing schemas")
     return parser
 
 
@@ -72,6 +84,89 @@ def handle_backfill_bootstrap(settings: Settings | None = None) -> tuple[int, di
     return (0, {"ok": True, **result.to_dict()})
 
 
+def handle_run_daily(args: argparse.Namespace, settings: Settings | None = None) -> tuple[int, dict[str, Any]]:
+    settings = settings or Settings()
+    market_repository = SharedMarketRepository(settings)
+    as_of_date = _parse_as_of(args.as_of, market_repository)
+    max_universe = args.max_universe or settings.swing_max_universe
+    symbols = _parse_symbols(args.symbols)
+    universe = UniverseSelector(market_repository).select(
+        as_of_date=as_of_date,
+        symbols=symbols,
+        max_universe=max_universe,
+        universe_name="manual" if symbols else "top_liquid",
+    )
+    repository = _DryRunRepository() if args.dry_run else SwingRepository(settings)
+    pipeline = ScreeningPipeline(
+        input_loader=ScreeningInputLoader(market_repository),
+        repository=repository,
+        screener=Screener(
+            ScreenerConfig(
+                min_price=settings.swing_min_price,
+                min_average_dollar_volume=settings.swing_min_adv_usd,
+                max_candidates=settings.swing_max_positions,
+            )
+        ),
+        strategies=(PullbackStrategy(), BreakoutStrategy()),
+    )
+    result = pipeline.run_daily(
+        symbols=list(universe.symbols),
+        as_of_date=as_of_date,
+        universe_name=universe.universe_name,
+        context=StrategyContext(
+            as_of_date=as_of_date,
+            risk_per_trade_pct=settings.swing_risk_per_trade_pct,
+            account_equity=settings.swing_account_equity,
+        ),
+    )
+    payload = {"ok": True, "dry_run": args.dry_run, **result.to_dict()}
+    if args.dry_run:
+        payload["would_write"] = repository.summary()
+    return (0, payload)
+
+
+def _parse_as_of(value: str | None, market_repository: SharedMarketRepository) -> date:
+    if value:
+        return date.fromisoformat(value)
+    latest = market_repository.fetch_latest_trade_date()
+    if latest is None:
+        raise RuntimeError("No shared trade date available")
+    return latest
+
+
+def _parse_symbols(value: str | None) -> list[str] | None:
+    if not value:
+        return None
+    symbols = [symbol.strip().upper() for symbol in value.split(",") if symbol.strip()]
+    return symbols or None
+
+
+class _DryRunRepository:
+    def __init__(self) -> None:
+        self.features: list[dict[str, Any]] = []
+        self.signals: list[dict[str, Any]] = []
+        self.completed: list[dict[str, Any]] = []
+
+    def create_screening_run(self, run_date: date, universe_name: str | None = None, criteria: dict[str, Any] | None = None) -> dict[str, Any]:
+        self.run = {"id": 0, "run_date": run_date, "universe_name": universe_name, "criteria": criteria or {}}
+        return self.run
+
+    def complete_screening_run(self, screening_run_id: int, result_count: int, status: str = "completed") -> dict[str, Any]:
+        self.completed.append({"screening_run_id": screening_run_id, "result_count": result_count, "status": status})
+        return self.completed[-1]
+
+    def upsert_feature_store(self, symbol: str, feature_date: date, feature_set: str, features: dict[str, Any]) -> dict[str, Any]:
+        self.features.append({"symbol": symbol, "feature_date": feature_date, "feature_set": feature_set, "features": features})
+        return self.features[-1]
+
+    def create_signal(self, **kwargs: Any) -> dict[str, Any]:
+        self.signals.append(kwargs)
+        return kwargs
+
+    def summary(self) -> dict[str, int]:
+        return {"feature_rows": len(self.features), "signals": len(self.signals), "completed_runs": len(self.completed)}
+
+
 def run(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -85,6 +180,8 @@ def run(argv: Sequence[str] | None = None) -> int:
         code, payload = handle_init_db(settings)
     elif args.command == "backfill-bootstrap":
         code, payload = handle_backfill_bootstrap(settings)
+    elif args.command == "run-daily":
+        code, payload = handle_run_daily(args, settings)
     else:  # pragma: no cover - argparse prevents this path.
         parser.error(f"unknown command: {args.command}")
 

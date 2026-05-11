@@ -2,7 +2,7 @@
 
 Foundation runtime for EOD swing-trading screening, strategy, backtest, alerts, and paper execution.
 
-## Sprint 1 scope
+## Sprint scope
 
 This repository shares Quant PostgreSQL/MinIO infrastructure but keeps Swing code and write schemas separate.
 
@@ -14,6 +14,9 @@ uv run swing-system --help
 uv run swing-system check-connection
 uv run swing-system check-readiness
 uv run swing-system init-db
+uv run swing-system backfill-bootstrap
+uv run swing-system run-daily --max-universe 10 --dry-run
+uv run swing-system run-daily --max-universe 10
 uv run uvicorn swing_trading_system.web.app:app --host 0.0.0.0 --port 8401
 ```
 
@@ -39,3 +42,9 @@ curl http://localhost:8401/healthz
 - `swing_raw.*`
 
 Swing must not write to Quant-owned `raw.*`, `stg.*`, `meta.*`, or `mart.*`.
+
+## Sprint 2 daily screening
+
+`uv run swing-system run-daily` loads point-in-time EOD data, computes screening features, runs Pullback/Breakout v1, stores features in `swing_mart.swing_feature_store`, and stores strategy signals in `swing_meta.signal`.
+
+Use `--dry-run` to compute without writing.

@@ -1,13 +1,16 @@
-"""Screening pipeline foundation connecting inputs, feature store, and signals."""
+"""Screening pipeline connecting inputs, feature store, screener, and strategies."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
-from typing import Any, Protocol
+from typing import Any, Protocol, Sequence
 
+from swing_trading_system.screening.features import ScreeningFeatures, calculate_features
 from swing_trading_system.screening.input_loader import ScreeningInputLoader
+from swing_trading_system.screening.screener import Screener, ScreeningCandidate
+from swing_trading_system.strategies.base import Strategy, StrategyContext, StrategySignal
 
 
 class ScreeningPersistence(Protocol):
@@ -37,6 +40,11 @@ class ScreeningPersistence(Protocol):
         symbol: str,
         signal_date: date,
         strategy: str,
+        entry_price: Decimal | float | None = None,
+        stop_price: Decimal | float | None = None,
+        target_price: Decimal | float | None = None,
+        risk_per_share: Decimal | float | None = None,
+        position_size: Decimal | float | None = None,
         score: Decimal | float | None = None,
         reason: str | None = None,
         details: dict[str, Any] | None = None,
@@ -58,19 +66,97 @@ class ScreeningPipelineResult:
     screening_run_id: int
     signal_count: int
     feature_count: int
+    candidate_count: int = 0
+    symbols: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "screening_run_id": self.screening_run_id,
+            "signal_count": self.signal_count,
+            "feature_count": self.feature_count,
+            "candidate_count": self.candidate_count,
+            "symbols": list(self.symbols),
+        }
 
 
 class ScreeningPipeline:
-    """Minimal Sprint 2-ready pipeline skeleton.
-
-    This intentionally does not implement pullback/breakout rules yet. It wires the
-    safe input boundary to Swing-owned persistence so strategy code can be added in
-    Sprint 2 without changing storage contracts.
-    """
-
-    def __init__(self, input_loader: ScreeningInputLoader, repository: ScreeningPersistence) -> None:
+    def __init__(
+        self,
+        input_loader: ScreeningInputLoader,
+        repository: ScreeningPersistence,
+        screener: Screener | None = None,
+        strategies: Sequence[Strategy] = (),
+    ) -> None:
         self.input_loader = input_loader
         self.repository = repository
+        self.screener = screener or Screener()
+        self.strategies = tuple(strategies)
+
+    def run_daily(
+        self,
+        symbols: list[str],
+        as_of_date: date,
+        universe_name: str | None = None,
+        feature_set: str = "screening_v1",
+        lookback_days: int = 365,
+        benchmark_symbol: str = "SPY",
+        context: StrategyContext | None = None,
+    ) -> ScreeningPipelineResult:
+        screening_run = self.repository.create_screening_run(
+            run_date=as_of_date,
+            universe_name=universe_name,
+            criteria={
+                "feature_set": feature_set,
+                "lookback_days": lookback_days,
+                "benchmark_symbol": benchmark_symbol,
+                "strategies": [strategy.name for strategy in self.strategies],
+            },
+        )
+        screening_run_id = int(screening_run["id"])
+        inputs = self.input_loader.load_universe(symbols=symbols, as_of_date=as_of_date, lookback_days=lookback_days)
+        benchmark_input = self.input_loader.load_symbol(
+            symbol=benchmark_symbol,
+            as_of_date=as_of_date,
+            lookback_days=lookback_days,
+        )
+
+        features = [
+            calculate_features(
+                symbol=symbol,
+                as_of_date=as_of_date,
+                rows=list(screening_input.rows),
+                benchmark_rows=list(benchmark_input.rows),
+            )
+            for symbol, screening_input in inputs.items()
+        ]
+        for feature in features:
+            self.repository.upsert_feature_store(
+                symbol=feature.symbol,
+                feature_date=as_of_date,
+                feature_set=feature_set,
+                features=feature.to_dict(),
+            )
+
+        candidates = self.screener.screen(features)
+        strategy_context = context or StrategyContext(as_of_date=as_of_date)
+        signals: list[StrategySignal] = []
+        for candidate in candidates:
+            for strategy in self.strategies:
+                signal = strategy.generate(candidate, strategy_context)
+                if signal is not None:
+                    signals.append(signal)
+
+        for signal in signals:
+            self.repository.create_signal(**signal.to_repository_kwargs(screening_run_id))
+
+        self.repository.complete_screening_run(screening_run_id, result_count=len(signals))
+        return ScreeningPipelineResult(
+            screening_run_id=screening_run_id,
+            signal_count=len(signals),
+            feature_count=len(features),
+            candidate_count=len(candidates),
+            symbols=tuple(symbols),
+        )
 
     def run_candidates(
         self,
@@ -118,4 +204,6 @@ class ScreeningPipeline:
             screening_run_id=screening_run_id,
             signal_count=len(candidates),
             feature_count=len(inputs),
+            candidate_count=len(candidates),
+            symbols=tuple(symbols),
         )

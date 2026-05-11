@@ -34,6 +34,13 @@ class Settings(BaseSettings):
 
     swing_web_host: str = Field(default="0.0.0.0", alias="SWING_WEB_HOST")
     swing_web_port: int = Field(default=8401, alias="SWING_WEB_PORT")
+    swing_min_price: float = Field(default=10.0, alias="SWING_MIN_PRICE")
+    swing_min_adv_usd: float = Field(default=10_000_000.0, alias="SWING_MIN_ADV_USD")
+    swing_max_universe: int = Field(default=400, alias="SWING_MAX_UNIVERSE")
+    swing_max_positions: int = Field(default=5, alias="SWING_MAX_POSITIONS")
+    swing_risk_per_trade_pct: float = Field(default=0.01, alias="SWING_RISK_PER_TRADE_PCT")
+    swing_account_equity: float = Field(default=100_000.0, alias="SWING_ACCOUNT_EQUITY")
+
     swing_watchlist_bucket: str = Field(default="swing-watchlists", alias="SWING_WATCHLIST_BUCKET")
     swing_backtest_bucket: str = Field(default="swing-backtests", alias="SWING_BACKTEST_BUCKET")
     swing_alert_bucket: str = Field(default="swing-alerts", alias="SWING_ALERT_BUCKET")
