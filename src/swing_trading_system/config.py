@@ -3,23 +3,24 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Annotated
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    infra_host: str = Field(default="localhost", alias="INFRA_HOST")
     postgres_db: str = Field(default="quant", alias="POSTGRES_DB")
     postgres_user: str = Field(default="quant", alias="POSTGRES_USER")
     postgres_password: str = Field(default="quant", alias="POSTGRES_PASSWORD")
-    postgres_host: str = Field(default="127.0.0.1", alias="POSTGRES_HOST")
+    postgres_host: str = Field(default="localhost", alias="POSTGRES_HOST")
     postgres_port: int = Field(default=55432, alias="POSTGRES_PORT")
     postgres_readonly: bool = Field(default=False, alias="POSTGRES_READONLY")
 
     minio_root_user: str = Field(default="minioadmin", alias="MINIO_ROOT_USER")
     minio_root_password: str = Field(default="minioadmin", alias="MINIO_ROOT_PASSWORD")
-    minio_endpoint: str = Field(default="http://127.0.0.1:9000", alias="MINIO_ENDPOINT")
+    minio_endpoint: str = Field(default="http://localhost:9000", alias="MINIO_ENDPOINT")
     minio_region: str = Field(default="us-east-1", alias="MINIO_REGION")
 
     alpaca_api_key: str | None = Field(default=None, alias="ALPACA_API_KEY")
@@ -56,6 +57,17 @@ class Settings(BaseSettings):
     smtp_username: str | None = Field(default=None, alias="SMTP_USERNAME")
     smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
     alert_email_to: Annotated[tuple[str, ...], NoDecode] = Field(default=(), alias="ALERT_EMAIL_TO")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_infra_host_defaults(cls, value: object) -> object:
+        if isinstance(value, dict):
+            infra_host = value.get("INFRA_HOST") or value.get("infra_host") or "localhost"
+            if "POSTGRES_HOST" not in value and "postgres_host" not in value:
+                value = {**value, "POSTGRES_HOST": infra_host}
+            if "MINIO_ENDPOINT" not in value and "minio_endpoint" not in value:
+                value = {**value, "MINIO_ENDPOINT": f"http://{infra_host}:9000"}
+        return value
 
     @field_validator("alert_email_to", mode="before")
     @classmethod

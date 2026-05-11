@@ -12,22 +12,23 @@
 
 ## Quant와 포트 분리
 현재 Quant가 사용 중인 포트:
-- `55432` PostgreSQL
-- `9000` MinIO API
-- `9001` MinIO Console
-- `5050` pgAdmin
-- `8080` Airflow
-- `8000` Quant web
+- PostgreSQL: `${INFRA_HOST}:55432`
+- MinIO API: `http://${INFRA_HOST}:9000`
+- MinIO Console: `http://${INFRA_HOST}:9001`
+- pgAdmin: `http://${INFRA_HOST}:5050`
+- Airflow: `http://${INFRA_HOST}:8080`
+- Quant web: `http://${INFRA_HOST}:8000`
 
 Swing 기본 포트:
-- `8401` Swing web
-- `8402` Swing API reserve
-- `8403` metrics/debug reserve
+- Swing web: `http://${INFRA_HOST}:8401`
+- Swing API reserve: `http://${INFRA_HOST}:8402`
+- metrics/debug reserve: `http://${INFRA_HOST}:8403`
 
 ## 빠른 시작
 ```bash
 cp .env.example .env
 uv sync
+# 필요하면 .env 의 INFRA_HOST 만 원하는 infra IP/host로 변경
 uv run swing-system init-db
 uv run uvicorn swing_trading_system.web.app:app --reload --port 8401
 ```
@@ -37,8 +38,10 @@ uv run uvicorn swing_trading_system.web.app:app --reload --port 8401
 docker compose up --build web
 ```
 
-- web: <http://localhost:8401>
-- healthz: <http://localhost:8401/healthz>
+- web: `http://${INFRA_HOST}:8401`
+- healthz: `http://${INFRA_HOST}:8401/healthz`
+- swing api reserve: `http://${INFRA_HOST}:8402`
+- metrics/debug reserve: `http://${INFRA_HOST}:8403`
 
 ## 주요 CLI
 ```bash
@@ -62,5 +65,6 @@ uv run swing-system execute-paper --all-ready --dry-run
 
 ## 운영 메모
 - Quant 인프라는 별도로 실행 중이어야 합니다.
+- 기본 infra 대상은 `INFRA_HOST=localhost`이며, 원격/별도 서버를 쓰려면 `INFRA_HOST`만 해당 IP/host로 지정하세요.
 - Swing compose는 Postgres/MinIO를 새로 띄우지 않습니다.
 - 장애/재실행 절차는 `docs/operations_runbook.md`를 참고하세요.

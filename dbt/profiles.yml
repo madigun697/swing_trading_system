@@ -3,7 +3,7 @@ swing_trading_system:
   outputs:
     dev:
       type: postgres
-      host: "{{ env_var('POSTGRES_HOST', '127.0.0.1') }}"
+      host: "{{ env_var('POSTGRES_HOST', env_var('INFRA_HOST', 'localhost')) }}"
       port: "{{ env_var('POSTGRES_PORT', '55432') | int }}"
       user: "{{ env_var('POSTGRES_USER', 'quant') }}"
       password: "{{ env_var('POSTGRES_PASSWORD', 'quant') }}"
