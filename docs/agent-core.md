@@ -1,10 +1,10 @@
-# Quant Project Operating Rules
+# Swing Trading System Operating Rules
 
 ## Purpose and Scope
 
 - This file is the single source of truth for every Codex session and every spawned agent working inside this project.
-- These rules apply to direct work in the root workspace and all nested project content, including `cherry_quant_wikidocs/`.
-- Custom specialist prompts live in `agents/` and are used as a prompt library together with `spawn_agent(agent_type="worker")`.
+- These rules apply to direct work in the root workspace and all nested project content, including `swing_trading_system/`.
+- Custom specialist prompts live in `~/.pi/agent/extensions/subagents/agents/` and are used as a prompt library together with `spawn_agent(agent_type="worker")`.
 - If custom subagent spawning is unavailable in Codex, enable it once in `~/.codex/config.toml` with:
 
 ```toml
@@ -37,6 +37,7 @@ multi_agent = true
    - Information architecture, user flows, screen structure, visual direction: `ui-ux-designer`
    - Large or risky completed change review: `paranoid-staff-engineer-reviewer`
    - User-impact validation or regression checks: `qa-engineer`
+   - Planning, task decomposition, subagent orchestration: `project-manager`
 4. Use mixed-task chaining in this order unless the task clearly needs a different sequence:
    - Domain specialist first
    - Implementing engineer second
