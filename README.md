@@ -16,6 +16,7 @@ Implemented foundation commands:
 - `uv run swing-system backfill-bootstrap` — seeds Sprint 2 bootstrap configs and feature rows.
 - `uv run swing-system run-daily --max-universe 10 --dry-run` — runs screening/strategy without writing.
 - `uv run swing-system run-daily --max-universe 10` — runs screening/strategy and writes feature/signal rows.
+- `uv run swing-system backfill-signals --start-date 2025-01-01 --end-date 2026-05-01 --frequency weekly --max-universe 10` — generates historical screening/strategy signals over a date range.
 - `uv run swing-system run-backtest --start-date 2026-05-01 --end-date 2026-05-01 --dry-run` — simulates backtest without saving results.
 - `uv run swing-system run-backtest --start-date 2026-05-01 --end-date 2026-05-01` — runs backtest and persists trade/equity results.
 - `uv run uvicorn swing_trading_system.web.app:app --host 0.0.0.0 --port 8401` — starts the Web UI/API server.
@@ -65,17 +66,24 @@ Swing must not write to Quant-owned `raw.*`, `stg.*`, `meta.*`, or `mart.*`.
 - signal 수
 - 저장 여부(dry-run / write)
 
+### Historical signal backfill
+- `uv run swing-system backfill-signals --start-date 2025-01-01 --end-date 2026-05-01 --frequency weekly --max-universe 10`
+- `--frequency`는 `daily`, `weekly`, `monthly`를 지원한다.
+- 기본적으로 이미 signal 또는 feature row가 있는 날짜는 중복 생성을 피하기 위해 skip하며, 재생성이 필요하면 `--force`를 사용한다.
+- 백테스트는 저장된 `swing_meta.signal.signal_date`를 기준으로 기간을 필터링하므로, 과거 기간 백테스트 전에는 해당 기간의 signal backfill이 필요하다.
+
 ## Sprint 3 backtest and UI
 
 `uv run swing-system run-backtest`는 Sprint 2에서 생성된 signal을 입력으로 사용해 일봉 백테스트를 수행한다.
 
 ### 주요 command
 - `uv run swing-system run-backtest --dry-run` — 저장 없이 signal/price 연결과 백테스트 결과를 먼저 검증한다.
-- `uv run swing-system run-backtest --start-date 2026-05-01 --end-date 2026-05-01 --dry-run` — 특정 구간만 대상으로 백테스트 논리를 확인할 때 사용한다.
+- `uv run swing-system run-backtest --start-date 2026-05-01 --end-date 2026-05-01 --dry-run` — 특정 signal date 구간만 대상으로 백테스트 논리를 확인할 때 사용한다.
 - `uv run swing-system run-backtest --start-date 2026-05-01 --end-date 2026-05-01` — trade log와 equity curve를 실제로 저장한다.
 
 ### 수행 내용
-- `swing_meta.signal`을 읽는다.
+- `swing_meta.signal`을 읽고 `--start-date/--end-date`를 `signal_date`에 적용한다.
+- 실제 trade date는 `t+1` 진입과 이후 exit 때문에 지정한 signal date 범위보다 뒤로 확장될 수 있다.
 - `stg.stg_daily_prices`에서 signal 이후 가격을 조회한다.
 - `t+1` 시가 진입, stop/target/max-hold exit을 적용한다.
 - 결과를 `swing_mart.backtest_trade_log`와 `swing_mart.backtest_equity_curve`에 저장한다.

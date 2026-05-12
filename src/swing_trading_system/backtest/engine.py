@@ -27,9 +27,10 @@ class BacktestEngine:
         run_id: str | None = None,
     ) -> BacktestResult:
         run_id = run_id or self.generate_run_id()
+        input_signals = tuple(signals)
         trades: list[BacktestTrade] = []
         rejections: list[BacktestRejection] = []
-        unique_signals, duplicate_rejections = self._dedupe_signals(signals)
+        unique_signals, duplicate_rejections = self._dedupe_signals(input_signals)
         rejections.extend(duplicate_rejections)
         for signal in unique_signals:
             trade, rejection = self._simulate_signal(signal, prices_by_symbol.get(signal.symbol, ()), config, run_id)
@@ -52,6 +53,9 @@ class BacktestEngine:
             equity_curve=tuple(equity_curve),
             rejections=tuple(rejections),
             metrics=metrics,
+            signal_count=len(input_signals),
+            signal_start_date=min((signal.signal_date for signal in input_signals), default=None),
+            signal_end_date=max((signal.signal_date for signal in input_signals), default=None),
         )
 
     @staticmethod

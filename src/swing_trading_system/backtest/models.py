@@ -159,6 +159,9 @@ class BacktestResult:
     equity_curve: tuple[EquityCurvePoint, ...]
     rejections: tuple[BacktestRejection, ...]
     metrics: dict[str, Any]
+    signal_count: int = 0
+    signal_start_date: date | None = None
+    signal_end_date: date | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -168,4 +171,7 @@ class BacktestResult:
             "equity_curve": [point.to_dict() for point in self.equity_curve],
             "rejections": [rejection.to_dict() for rejection in self.rejections],
             "metrics": self.metrics,
+            "signal_count": self.signal_count,
+            "signal_start_date": self.signal_start_date.isoformat() if self.signal_start_date else None,
+            "signal_end_date": self.signal_end_date.isoformat() if self.signal_end_date else None,
         }

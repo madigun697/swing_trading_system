@@ -157,6 +157,8 @@ SCHEMA_SQL: tuple[str, ...] = (
         run_id TEXT PRIMARY KEY,
         start_date DATE,
         end_date DATE,
+        signal_start_date DATE,
+        signal_end_date DATE,
         initial_equity NUMERIC,
         final_equity NUMERIC,
         total_pnl NUMERIC,
@@ -172,6 +174,8 @@ SCHEMA_SQL: tuple[str, ...] = (
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
     """,
+    "ALTER TABLE IF EXISTS swing_mart.backtest_run_summary ADD COLUMN IF NOT EXISTS signal_start_date DATE",
+    "ALTER TABLE IF EXISTS swing_mart.backtest_run_summary ADD COLUMN IF NOT EXISTS signal_end_date DATE",
 )
 
 

@@ -14,6 +14,7 @@ def test_build_parser_accepts_required_commands() -> None:
     assert parser.parse_args(["check-readiness"]).command == "check-readiness"
     assert parser.parse_args(["init-db"]).command == "init-db"
     assert parser.parse_args(["backfill-bootstrap"]).command == "backfill-bootstrap"
+    assert parser.parse_args(["backfill-signals", "--start-date", "2026-01-01", "--end-date", "2026-01-31"]).command == "backfill-signals"
     assert parser.parse_args(["run-daily", "--as-of", "2026-01-01", "--dry-run"]).command == "run-daily"
     assert parser.parse_args(["run-backtest", "--start-date", "2026-01-01", "--dry-run"]).command == "run-backtest"
 
@@ -80,6 +81,32 @@ def test_run_daily_dry_run_handler(monkeypatch) -> None:
     assert payload["would_write"] == {"feature_rows": 0, "signals": 0, "completed_runs": 0}
 
 
+def test_backfill_signals_handler_selects_trade_dates(monkeypatch) -> None:
+    class FakeMarketRepository:
+        def __init__(self, settings=None) -> None:
+            pass
+
+        def fetch_trade_dates(self, start_date, end_date, symbol="SPY"):
+            return [date(2026, 1, 1), date(2026, 1, 2), date(2026, 1, 8)]
+
+    calls = []
+
+    def fake_run_daily(args, settings=None):
+        calls.append(args.as_of)
+        return 0, {"signal_count": 1, "feature_count": 2, "candidate_count": 1, "screening_run_id": len(calls)}
+
+    monkeypatch.setattr(cli, "SharedMarketRepository", FakeMarketRepository)
+    monkeypatch.setattr(cli, "handle_run_daily", fake_run_daily)
+
+    args = Namespace(start_date="2026-01-01", end_date="2026-01-31", frequency="weekly", max_universe=2, symbols=None, dry_run=True, force=False)
+    code, payload = cli.handle_backfill_signals(args, Settings(_env_file=None))
+
+    assert code == 0
+    assert calls == ["2026-01-01", "2026-01-08"]
+    assert payload["processed_dates"] == 2
+    assert payload["total_signals"] == 2
+
+
 def test_run_backtest_handler_dry_run(monkeypatch) -> None:
     class FakeRepository:
         def __init__(self, settings=None) -> None:
@@ -94,11 +121,17 @@ def test_run_backtest_handler_dry_run(monkeypatch) -> None:
         def save_result(self, result):
             raise AssertionError("dry-run must not save")
 
+    class FakeTrade:
+        entry_date = date(2026, 1, 2)
+        exit_date = date(2026, 1, 3)
+
     class FakeResult:
         run_id = "r1"
-        trades = [object()]
+        trades = [FakeTrade()]
         rejections = []
         metrics = {"total_return": 0.01}
+        signal_start_date = date(2026, 1, 1)
+        signal_end_date = date(2026, 1, 1)
 
     class FakeEngine:
         def run(self, signals, prices_by_symbol, config):

@@ -143,12 +143,14 @@ class BacktestRepository:
                     cur.execute(
                         """
                         INSERT INTO swing_mart.backtest_run_summary (
-                            run_id, start_date, end_date, initial_equity, final_equity, total_pnl, total_return,
-                            max_drawdown, win_rate, profit_factor, trade_count, rejection_count, metrics, config, rejections
+                            run_id, start_date, end_date, signal_start_date, signal_end_date, initial_equity, final_equity,
+                            total_pnl, total_return, max_drawdown, win_rate, profit_factor, trade_count, rejection_count,
+                            metrics, config, rejections
                         ) VALUES (
-                            %(run_id)s, %(start_date)s, %(end_date)s, %(initial_equity)s, %(final_equity)s, %(total_pnl)s,
-                            %(total_return)s, %(max_drawdown)s, %(win_rate)s, %(profit_factor)s, %(trade_count)s,
-                            %(rejection_count)s, %(metrics)s::jsonb, %(config)s::jsonb, %(rejections)s::jsonb
+                            %(run_id)s, %(start_date)s, %(end_date)s, %(signal_start_date)s, %(signal_end_date)s,
+                            %(initial_equity)s, %(final_equity)s, %(total_pnl)s, %(total_return)s, %(max_drawdown)s,
+                            %(win_rate)s, %(profit_factor)s, %(trade_count)s, %(rejection_count)s,
+                            %(metrics)s::jsonb, %(config)s::jsonb, %(rejections)s::jsonb
                         )
                         """,
                         _summary_params(result),
@@ -215,6 +217,8 @@ class BacktestRepository:
                 "run_id": run_id,
                 "start_date": min((trade.get("entry_date") for trade in trades), default=None),
                 "end_date": max((trade.get("exit_date") for trade in trades), default=None),
+                "signal_start_date": metrics.get("signal_start_date"),
+                "signal_end_date": metrics.get("signal_end_date"),
                 "initial_equity": config.get("initial_equity"),
                 "final_equity": equity[-1].get("equity") if equity else None,
                 "total_pnl": metrics.get("total_pnl", sum(_safe_float(trade.get("pnl")) for trade in trades)),
@@ -257,6 +261,8 @@ def _summary_params(result: BacktestResult) -> dict[str, Any]:
         "run_id": result.run_id,
         "start_date": start_date,
         "end_date": end_date,
+        "signal_start_date": result.signal_start_date,
+        "signal_end_date": result.signal_end_date,
         "initial_equity": result.config.initial_equity,
         "final_equity": final_equity,
         "total_pnl": result.metrics.get("total_pnl", 0.0),

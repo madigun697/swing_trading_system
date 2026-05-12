@@ -111,6 +111,21 @@ class SharedMarketRepository:
             row = cur.fetchone() or {}
             return row.get("latest_trade_date")
 
+    def fetch_trade_dates(self, start_date: date, end_date: date, symbol: str = "SPY") -> list[date]:
+        with postgres_connection(self.settings) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT trade_date
+                FROM stg.stg_daily_prices
+                WHERE symbol = %(symbol)s
+                  AND trade_date >= %(start_date)s
+                  AND trade_date <= %(end_date)s
+                ORDER BY trade_date ASC
+                """,
+                {"symbol": symbol, "start_date": start_date, "end_date": end_date},
+            )
+            return [row["trade_date"] for row in cur.fetchall()]
+
     def fetch_top_liquid_symbols(self, as_of_date: date, limit: int = 10) -> list[str]:
         with postgres_connection(self.settings) as conn, conn.cursor() as cur:
             cur.execute(

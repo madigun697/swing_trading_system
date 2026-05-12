@@ -32,6 +32,15 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("init-db", help="Initialize Swing-owned schemas and tables")
     subparsers.add_parser("backfill-bootstrap", help="Seed Sprint 2 bootstrap data into Swing-owned schemas")
 
+    backfill_signals = subparsers.add_parser("backfill-signals", help="Backfill daily screening/strategy signals over a date range")
+    backfill_signals.add_argument("--start-date", required=True, help="Backfill start date YYYY-MM-DD")
+    backfill_signals.add_argument("--end-date", required=True, help="Backfill end date YYYY-MM-DD")
+    backfill_signals.add_argument("--frequency", choices=("daily", "weekly", "monthly"), default="weekly")
+    backfill_signals.add_argument("--max-universe", type=int, default=None)
+    backfill_signals.add_argument("--symbols", help="Comma-separated symbols; defaults to top liquid universe")
+    backfill_signals.add_argument("--dry-run", action="store_true", help="Compute without writing Swing schema rows")
+    backfill_signals.add_argument("--force", action="store_true", help="Recompute dates even when signals already exist")
+
     run_daily = subparsers.add_parser("run-daily", help="Run Sprint 2 screening and strategy pipeline")
     run_daily.add_argument("--as-of", dest="as_of", help="As-of date in YYYY-MM-DD format; defaults to latest shared trade date")
     run_daily.add_argument("--symbols", help="Comma-separated symbols; defaults to top liquid universe")
@@ -100,6 +109,70 @@ def handle_backfill_bootstrap(settings: Settings | None = None) -> tuple[int, di
     return (0, {"ok": True, **result.to_dict()})
 
 
+def handle_backfill_signals(args: argparse.Namespace, settings: Settings | None = None) -> tuple[int, dict[str, Any]]:
+    settings = settings or Settings()
+    market_repository = SharedMarketRepository(settings)
+    start_date = date.fromisoformat(args.start_date)
+    end_date = date.fromisoformat(args.end_date)
+    trade_dates = market_repository.fetch_trade_dates(start_date, end_date)
+    selected_dates = _select_backfill_dates(trade_dates, args.frequency)
+    backtest_repository = BacktestRepository(settings)
+    swing_repository = SwingRepository(settings)
+    symbols = _parse_symbols(args.symbols)
+    runs: list[dict[str, Any]] = []
+    total_signals = 0
+    total_features = 0
+    skipped_existing = 0
+    for as_of_date in selected_dates:
+        if not args.force and not args.dry_run:
+            existing = backtest_repository.fetch_signals(start_date=as_of_date, end_date=as_of_date, symbols=symbols)
+            feature_rows = swing_repository.count_feature_rows(as_of_date, symbols=symbols)
+            if existing or feature_rows:
+                skipped_existing += 1
+                runs.append(
+                    {
+                        "as_of": as_of_date,
+                        "skipped": True,
+                        "reason": "signals_or_features_already_exist",
+                        "signal_count": len(existing),
+                        "feature_count": feature_rows,
+                    }
+                )
+                continue
+        daily_args = argparse.Namespace(
+            as_of=as_of_date.isoformat(),
+            symbols=args.symbols,
+            max_universe=args.max_universe,
+            dry_run=args.dry_run,
+        )
+        _, payload = handle_run_daily(daily_args, settings)
+        runs.append(
+            {
+                "as_of": as_of_date,
+                "signal_count": payload.get("signal_count", 0),
+                "feature_count": payload.get("feature_count", 0),
+                "candidate_count": payload.get("candidate_count", 0),
+                "screening_run_id": payload.get("screening_run_id"),
+            }
+        )
+        total_signals += int(payload.get("signal_count", 0))
+        total_features += int(payload.get("feature_count", 0))
+    return (
+        0,
+        {
+            "ok": True,
+            "dry_run": args.dry_run,
+            "frequency": args.frequency,
+            "available_trade_dates": len(trade_dates),
+            "processed_dates": len(selected_dates),
+            "total_features": total_features,
+            "total_signals": total_signals,
+            "skipped_existing_dates": skipped_existing,
+            "runs": runs,
+        },
+    )
+
+
 def handle_run_backtest(args: argparse.Namespace, settings: Settings | None = None) -> tuple[int, dict[str, Any]]:
     settings = settings or Settings()
     config = BacktestConfig(
@@ -136,6 +209,10 @@ def handle_run_backtest(args: argparse.Namespace, settings: Settings | None = No
             "dry_run": args.dry_run,
             "run_id": result.run_id,
             "signal_count": len(signals),
+            "signal_start_date": result.signal_start_date,
+            "signal_end_date": result.signal_end_date,
+            "trade_start_date": min((trade.entry_date for trade in result.trades), default=None),
+            "trade_end_date": max((trade.exit_date for trade in result.trades), default=None),
             "trade_count": len(result.trades),
             "rejection_count": len(result.rejections),
             "metrics": result.metrics,
@@ -183,6 +260,26 @@ def handle_run_daily(args: argparse.Namespace, settings: Settings | None = None)
     if args.dry_run:
         payload["would_write"] = repository.summary()
     return (0, payload)
+
+
+def _select_backfill_dates(trade_dates: list[date], frequency: str) -> list[date]:
+    if frequency == "daily":
+        return trade_dates
+    selected: list[date] = []
+    seen: set[tuple[int, int] | tuple[int, int, int]] = set()
+    for trade_date in trade_dates:
+        if frequency == "weekly":
+            iso = trade_date.isocalendar()
+            key: tuple[int, int] | tuple[int, int, int] = (iso.year, iso.week)
+        elif frequency == "monthly":
+            key = (trade_date.year, trade_date.month, 1)
+        else:
+            raise ValueError(f"unsupported frequency: {frequency}")
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(trade_date)
+    return selected
 
 
 def _parse_as_of(value: str | None, market_repository: SharedMarketRepository) -> date:
@@ -240,6 +337,8 @@ def run(argv: Sequence[str] | None = None) -> int:
         code, payload = handle_init_db(settings)
     elif args.command == "backfill-bootstrap":
         code, payload = handle_backfill_bootstrap(settings)
+    elif args.command == "backfill-signals":
+        code, payload = handle_backfill_signals(args, settings)
     elif args.command == "run-daily":
         code, payload = handle_run_daily(args, settings)
     elif args.command == "run-backtest":

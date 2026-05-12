@@ -37,6 +37,26 @@ class SwingRepository:
                 "feature_rows": int(row.get("feature_rows", 0)),
             }
 
+    def count_feature_rows(self, feature_date: date, symbols: list[str] | None = None, feature_set: str = "swing_features_v1") -> int:
+        params: dict[str, Any] = {"feature_date": feature_date, "feature_set": feature_set}
+        symbol_filter = ""
+        if symbols:
+            symbol_filter = "AND symbol = ANY(%(symbols)s)"
+            params["symbols"] = symbols
+        with postgres_connection(self.settings) as conn, conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT COUNT(*) AS n
+                FROM swing_mart.swing_feature_store
+                WHERE feature_date = %(feature_date)s
+                  AND feature_set = %(feature_set)s
+                  {symbol_filter}
+                """,
+                params,
+            )
+            row = cur.fetchone() or {}
+            return int(row.get("n", 0))
+
     def create_strategy_config(
         self,
         strategy_name: str,
