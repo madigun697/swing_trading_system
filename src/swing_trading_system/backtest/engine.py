@@ -29,14 +29,22 @@ class BacktestEngine:
         run_id = run_id or self.generate_run_id()
         trades: list[BacktestTrade] = []
         rejections: list[BacktestRejection] = []
-        for signal in signals:
+        unique_signals, duplicate_rejections = self._dedupe_signals(signals)
+        rejections.extend(duplicate_rejections)
+        for signal in unique_signals:
             trade, rejection = self._simulate_signal(signal, prices_by_symbol.get(signal.symbol, ()), config, run_id)
             if trade is not None:
-                trades.append(trade)
+                portfolio_rejection = self._portfolio_rejection(signal, trade, trades, config)
+                if portfolio_rejection is not None:
+                    rejections.append(portfolio_rejection)
+                else:
+                    trades.append(trade)
             if rejection is not None:
                 rejections.append(rejection)
         equity_curve = self._build_equity_curve(run_id, sorted(trades, key=lambda trade: trade.exit_date), config.initial_equity)
         metrics = calculate_metrics(trades, equity_curve, config.initial_equity)
+        metrics["rejection_count"] = len(rejections)
+        metrics["duplicate_signal_rejections"] = sum(1 for rejection in rejections if rejection.reason == "duplicate_signal")
         return BacktestResult(
             run_id=run_id,
             config=config,
@@ -49,6 +57,47 @@ class BacktestEngine:
     @staticmethod
     def generate_run_id() -> str:
         return f"bt-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}"
+
+    def _dedupe_signals(self, signals: Sequence[BacktestSignal]) -> tuple[list[BacktestSignal], list[BacktestRejection]]:
+        seen: set[tuple[object, ...]] = set()
+        unique: list[BacktestSignal] = []
+        rejections: list[BacktestRejection] = []
+        for signal in sorted(signals, key=lambda item: (item.signal_date, -(item.score or 0.0), item.symbol, item.strategy, item.id)):
+            key = (
+                signal.symbol,
+                signal.strategy,
+                signal.signal_date,
+                round(signal.entry_price, 6),
+                round(signal.stop_price, 6),
+                round(signal.target_price, 6),
+            )
+            if key in seen:
+                rejections.append(BacktestRejection(signal.id, signal.symbol, "duplicate_signal"))
+                continue
+            seen.add(key)
+            unique.append(signal)
+        return unique, rejections
+
+    def _portfolio_rejection(
+        self,
+        signal: BacktestSignal,
+        trade: BacktestTrade,
+        accepted_trades: Sequence[BacktestTrade],
+        config: BacktestConfig,
+    ) -> BacktestRejection | None:
+        open_trades = [
+            accepted
+            for accepted in accepted_trades
+            if accepted.entry_date <= trade.entry_date <= accepted.exit_date
+        ]
+        if config.max_positions > 0 and len(open_trades) >= config.max_positions:
+            return BacktestRejection(signal.id, signal.symbol, "max_positions_exceeded")
+        max_exposure = config.initial_equity * config.max_gross_exposure_pct
+        existing_exposure = sum(accepted.entry_price * accepted.quantity for accepted in open_trades)
+        trade_exposure = trade.entry_price * trade.quantity
+        if max_exposure > 0 and existing_exposure + trade_exposure > max_exposure:
+            return BacktestRejection(signal.id, signal.symbol, "gross_exposure_exceeded")
+        return None
 
     def _simulate_signal(
         self,
@@ -116,6 +165,7 @@ class BacktestEngine:
                     "exit_bar": exit_bar.to_dict(),
                     "fee_bps": config.fee_bps,
                     "slippage_bps": config.slippage_bps,
+                    "entry_notional": round(entry_notional, 6),
                     "same_bar_exit_forbidden": True,
                 },
             ),
@@ -128,17 +178,26 @@ class BacktestEngine:
         curve: list[EquityCurvePoint] = []
         if not trades:
             return curve
+        trades_by_date: dict[object, list[BacktestTrade]] = {}
         for trade in trades:
-            equity += trade.pnl
+            trades_by_date.setdefault(trade.exit_date, []).append(trade)
+        for exit_date, date_trades in sorted(trades_by_date.items()):
+            daily_pnl = sum(trade.pnl for trade in date_trades)
+            equity += daily_pnl
             peak = max(peak, equity)
             drawdown = (equity / peak) - 1.0 if peak else 0.0
             curve.append(
                 EquityCurvePoint(
                     run_id=run_id,
-                    equity_date=trade.exit_date,
+                    equity_date=exit_date,
                     equity=round(equity, 6),
                     drawdown=round(drawdown, 8),
-                    details={"signal_id": trade.signal_id, "symbol": trade.symbol, "exit_reason": trade.exit_reason},
+                    details={
+                        "daily_pnl": round(daily_pnl, 6),
+                        "trade_count": len(date_trades),
+                        "symbols": [trade.symbol for trade in date_trades],
+                        "exit_reasons": [trade.exit_reason for trade in date_trades],
+                    },
                 )
             )
         return curve

@@ -152,6 +152,26 @@ SCHEMA_SQL: tuple[str, ...] = (
         UNIQUE (run_id, equity_date)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS swing_mart.backtest_run_summary (
+        run_id TEXT PRIMARY KEY,
+        start_date DATE,
+        end_date DATE,
+        initial_equity NUMERIC,
+        final_equity NUMERIC,
+        total_pnl NUMERIC,
+        total_return NUMERIC,
+        max_drawdown NUMERIC,
+        win_rate NUMERIC,
+        profit_factor NUMERIC,
+        trade_count INTEGER NOT NULL DEFAULT 0,
+        rejection_count INTEGER NOT NULL DEFAULT 0,
+        metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
+        config JSONB NOT NULL DEFAULT '{}'::jsonb,
+        rejections JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
 )
 
 

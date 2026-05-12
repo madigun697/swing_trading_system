@@ -25,6 +25,8 @@ class BacktestConfig:
     fee_bps: float = 2.0
     slippage_bps: float = 10.0
     max_hold_days: int = 20
+    max_positions: int = 5
+    max_gross_exposure_pct: float = 1.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

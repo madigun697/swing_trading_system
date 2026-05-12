@@ -8,6 +8,8 @@ def test_backtest_repository_uses_swing_mart_for_writes_and_stg_for_reads() -> N
     assert "FROM stg.stg_daily_prices" in source
     assert "INSERT INTO swing_mart.backtest_trade_log" in source
     assert "INSERT INTO swing_mart.backtest_equity_curve" in source
+    assert "INSERT INTO swing_mart.backtest_run_summary" in source
     assert "INSERT INTO stg." not in source
     assert "UPDATE stg." not in source
+    assert "max(signal_dates) + timedelta" in source
     assert "INSERT INTO raw." not in source

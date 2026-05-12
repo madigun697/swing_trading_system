@@ -81,17 +81,17 @@ class BacktestRepository:
         max_hold_days: int = 20,
     ) -> dict[str, list[PriceBar]]:
         prices: dict[str, list[PriceBar]] = {}
+        signal_dates_by_symbol: dict[str, list[date]] = {}
         for signal in signals:
-            current = prices.setdefault(signal.symbol, [])
-            if current:
-                continue
-            current.extend(
-                self.fetch_price_bars(
-                    symbol=signal.symbol,
-                    start_date=signal.signal_date,
-                    end_date=end_date,
-                    max_hold_days=max_hold_days,
-                )
+            signal_dates_by_symbol.setdefault(signal.symbol, []).append(signal.signal_date)
+        for symbol, signal_dates in signal_dates_by_symbol.items():
+            start_date = min(signal_dates)
+            effective_end = end_date or (max(signal_dates) + timedelta(days=max_hold_days * 3 + 15))
+            prices[symbol] = self.fetch_price_bars(
+                symbol=symbol,
+                start_date=start_date,
+                end_date=effective_end,
+                max_hold_days=max_hold_days,
             )
         return prices
 
@@ -101,6 +101,7 @@ class BacktestRepository:
                 with conn.cursor() as cur:
                     cur.execute("DELETE FROM swing_mart.backtest_trade_log WHERE run_id = %(run_id)s", {"run_id": result.run_id})
                     cur.execute("DELETE FROM swing_mart.backtest_equity_curve WHERE run_id = %(run_id)s", {"run_id": result.run_id})
+                    cur.execute("DELETE FROM swing_mart.backtest_run_summary WHERE run_id = %(run_id)s", {"run_id": result.run_id})
                     for trade in result.trades:
                         cur.execute(
                             """
@@ -139,21 +140,48 @@ class BacktestRepository:
                                 "details": Jsonb({**point.details, "metrics": result.metrics, "config": result.config.to_dict()}),
                             },
                         )
-        return {"trades_saved": len(result.trades), "equity_points_saved": len(result.equity_curve)}
+                    cur.execute(
+                        """
+                        INSERT INTO swing_mart.backtest_run_summary (
+                            run_id, start_date, end_date, initial_equity, final_equity, total_pnl, total_return,
+                            max_drawdown, win_rate, profit_factor, trade_count, rejection_count, metrics, config, rejections
+                        ) VALUES (
+                            %(run_id)s, %(start_date)s, %(end_date)s, %(initial_equity)s, %(final_equity)s, %(total_pnl)s,
+                            %(total_return)s, %(max_drawdown)s, %(win_rate)s, %(profit_factor)s, %(trade_count)s,
+                            %(rejection_count)s, %(metrics)s::jsonb, %(config)s::jsonb, %(rejections)s::jsonb
+                        )
+                        """,
+                        _summary_params(result),
+                    )
+        return {
+            "trades_saved": len(result.trades),
+            "equity_points_saved": len(result.equity_curve),
+            "summary_saved": 1,
+        }
 
     def list_recent_runs(self, limit: int = 20) -> list[dict[str, Any]]:
         with postgres_connection(self.settings) as conn, conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT run_id,
-                       COUNT(*) AS trade_count,
-                       SUM(pnl) AS total_pnl,
-                       MIN(entry_date) AS start_date,
-                       MAX(exit_date) AS end_date,
-                       MAX(created_at) AS created_at
-                FROM swing_mart.backtest_trade_log
-                GROUP BY run_id
-                ORDER BY MAX(created_at) DESC
+                WITH trade_runs AS (
+                    SELECT run_id,
+                           COUNT(*) AS trade_count,
+                           SUM(pnl) AS total_pnl,
+                           MIN(entry_date) AS start_date,
+                           MAX(exit_date) AS end_date,
+                           MAX(created_at) AS created_at
+                    FROM swing_mart.backtest_trade_log
+                    GROUP BY run_id
+                )
+                SELECT COALESCE(summary.run_id, trade_runs.run_id) AS run_id,
+                       COALESCE(summary.trade_count, trade_runs.trade_count, 0) AS trade_count,
+                       COALESCE(summary.total_pnl, trade_runs.total_pnl, 0) AS total_pnl,
+                       COALESCE(summary.start_date, trade_runs.start_date) AS start_date,
+                       COALESCE(summary.end_date, trade_runs.end_date) AS end_date,
+                       COALESCE(summary.created_at, trade_runs.created_at) AS created_at
+                FROM trade_runs
+                FULL OUTER JOIN swing_mart.backtest_run_summary summary USING (run_id)
+                ORDER BY COALESCE(summary.created_at, trade_runs.created_at) DESC
                 LIMIT %(limit)s
                 """,
                 {"limit": limit},
@@ -173,6 +201,34 @@ class BacktestRepository:
             )
             return list(cur.fetchall())
 
+    def fetch_run_summary(self, run_id: str) -> dict[str, Any]:
+        with postgres_connection(self.settings) as conn, conn.cursor() as cur:
+            cur.execute("SELECT * FROM swing_mart.backtest_run_summary WHERE run_id = %(run_id)s", {"run_id": run_id})
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+            trades = self.fetch_run_trades(run_id)
+            equity = self.fetch_run_equity_curve(run_id)
+            metrics = (equity[-1].get("details") or {}).get("metrics", {}) if equity else {}
+            config = (equity[-1].get("details") or {}).get("config", {}) if equity else {}
+            return {
+                "run_id": run_id,
+                "start_date": min((trade.get("entry_date") for trade in trades), default=None),
+                "end_date": max((trade.get("exit_date") for trade in trades), default=None),
+                "initial_equity": config.get("initial_equity"),
+                "final_equity": equity[-1].get("equity") if equity else None,
+                "total_pnl": metrics.get("total_pnl", sum(_safe_float(trade.get("pnl")) for trade in trades)),
+                "total_return": metrics.get("total_return"),
+                "max_drawdown": metrics.get("max_drawdown"),
+                "win_rate": metrics.get("win_rate"),
+                "profit_factor": metrics.get("profit_factor"),
+                "trade_count": len(trades),
+                "rejection_count": metrics.get("rejection_count", 0),
+                "metrics": metrics,
+                "config": config,
+                "rejections": [],
+            }
+
     def fetch_run_equity_curve(self, run_id: str) -> list[dict[str, Any]]:
         with postgres_connection(self.settings) as conn, conn.cursor() as cur:
             cur.execute(
@@ -191,3 +247,33 @@ class BacktestRepository:
             cur.execute("SELECT COUNT(*) AS n FROM swing_meta.signal")
             row = cur.fetchone() or {}
             return int(row.get("n", 0))
+
+
+def _summary_params(result: BacktestResult) -> dict[str, Any]:
+    start_date = min((trade.entry_date for trade in result.trades), default=None)
+    end_date = max((trade.exit_date for trade in result.trades), default=None)
+    final_equity = result.equity_curve[-1].equity if result.equity_curve else result.config.initial_equity
+    return {
+        "run_id": result.run_id,
+        "start_date": start_date,
+        "end_date": end_date,
+        "initial_equity": result.config.initial_equity,
+        "final_equity": final_equity,
+        "total_pnl": result.metrics.get("total_pnl", 0.0),
+        "total_return": result.metrics.get("total_return", 0.0),
+        "max_drawdown": result.metrics.get("max_drawdown", 0.0),
+        "win_rate": result.metrics.get("win_rate", 0.0),
+        "profit_factor": result.metrics.get("profit_factor"),
+        "trade_count": len(result.trades),
+        "rejection_count": len(result.rejections),
+        "metrics": Jsonb(result.metrics),
+        "config": Jsonb(result.config.to_dict()),
+        "rejections": Jsonb([rejection.to_dict() for rejection in result.rejections]),
+    }
+
+
+def _safe_float(value: object) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0

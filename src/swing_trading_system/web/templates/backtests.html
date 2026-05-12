@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Backtests{% endblock %}
+{% block content %}
+<section class="hero-card">
+  <div>
+    <p class="eyebrow">Signal Backtests</p>
+    <h1>Backtests</h1>
+    <p class="hero-copy">Sprint 3 백테스트 run 결과입니다. trade log와 equity curve는 Swing mart schema에 저장됩니다.</p>
+  </div>
+  <div class="hero-actions"><a class="btn secondary" href="{{ url_for('signals') }}">시그널 보기</a></div>
+</section>
+
+{% if ui_warnings %}
+<article class="panel-card" style="margin-bottom: 18px;">
+  <div class="panel-header"><h2>Backtests warnings</h2><span class="status-badge warn">degraded</span></div>
+  <div class="panel-body">{% for warning in ui_warnings %}<p class="kpi-note">{{ warning }}</p>{% endfor %}</div>
+</article>
+{% endif %}
+
+<article class="panel-card">
+  <div class="panel-header">
+    <h2>Recent Runs</h2>
+    <span class="state-pill">{{ recent_runs|length }} runs</span>
+  </div>
+  <div class="panel-body">
+    {% include "partials/runs_table.html" %}
+  </div>
+</article>
+{% endblock %}

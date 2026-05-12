@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Signals{% endblock %}
+{% block content %}
+<section class="hero-card">
+  <div>
+    <p class="eyebrow">Strategy Signals</p>
+    <h1>Signals</h1>
+    <p class="hero-copy">Sprint 2 전략 엔진이 생성한 entry/stop/target 기반 signal 목록입니다.</p>
+  </div>
+  <div class="hero-actions"><a class="btn secondary" href="{{ url_for('index') }}">Dashboard</a></div>
+</section>
+
+{% if ui_warnings %}
+<article class="panel-card" style="margin-bottom: 18px;">
+  <div class="panel-header"><h2>Signals warnings</h2><span class="status-badge warn">degraded</span></div>
+  <div class="panel-body">{% for warning in ui_warnings %}<p class="kpi-note">{{ warning }}</p>{% endfor %}</div>
+</article>
+{% endif %}
+
+<article class="panel-card">
+  <div class="panel-header">
+    <h2>Recent Signals</h2>
+    <span class="state-pill">{{ signals|length }} rows</span>
+  </div>
+  <div class="table-wrap">
+    {% if signals %}
+    <table>
+      <thead><tr><th>ID</th><th>Symbol</th><th>Strategy</th><th>Date</th><th class="numeric">Entry</th><th class="numeric">Stop</th><th class="numeric">Target</th><th class="numeric">Score</th></tr></thead>
+      <tbody>
+      {% for signal in signals %}
+        <tr>
+          <td><span class="code-chip">#{{ signal.id }}</span></td>
+          <td><strong>{{ signal.symbol }}</strong></td>
+          <td><span class="state-pill strategy">{{ signal.strategy }}</span></td>
+          <td>{{ signal.signal_date }}</td>
+          <td class="numeric">{{ "%.2f"|format(signal.entry_price) }}</td>
+          <td class="numeric">{{ "%.2f"|format(signal.stop_price) }}</td>
+          <td class="numeric">{{ "%.2f"|format(signal.target_price) }}</td>
+          <td class="numeric">{{ "%.3f"|format(signal.score or 0) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div class="empty-state">No signals yet. Run <code>uv run swing-system run-daily</code>.</div>{% endif %}
+  </div>
+</article>
+{% endblock %}

@@ -47,6 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_backtest.add_argument("--fee-bps", type=float, default=None)
     run_backtest.add_argument("--slippage-bps", type=float, default=None)
     run_backtest.add_argument("--max-hold-days", type=int, default=None)
+    run_backtest.add_argument("--max-positions", type=int, default=None)
+    run_backtest.add_argument("--max-gross-exposure-pct", type=float, default=None)
     run_backtest.add_argument("--dry-run", action="store_true", help="Run without saving backtest results")
     return parser
 
@@ -105,6 +107,12 @@ def handle_run_backtest(args: argparse.Namespace, settings: Settings | None = No
         fee_bps=args.fee_bps if args.fee_bps is not None else settings.swing_fee_bps,
         slippage_bps=args.slippage_bps if args.slippage_bps is not None else settings.swing_slippage_bps,
         max_hold_days=args.max_hold_days or settings.swing_default_max_hold_days,
+        max_positions=args.max_positions or settings.swing_max_positions,
+        max_gross_exposure_pct=(
+            args.max_gross_exposure_pct
+            if args.max_gross_exposure_pct is not None
+            else settings.swing_max_gross_exposure_pct
+        ),
     )
     repository = BacktestRepository(settings)
     start_date = date.fromisoformat(args.start_date) if args.start_date else None

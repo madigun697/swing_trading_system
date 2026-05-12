@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Backtest {{ run_id }}{% endblock %}
+{% block content %}
+<section class="hero-card">
+  <div>
+    <p class="eyebrow">Backtest Detail</p>
+    <h1>{{ run_id }}</h1>
+    <p class="hero-copy">보고서와 동일한 핵심 summary, 기여도, 리스크 경고, trade log/equity curve 상세입니다.</p>
+  </div>
+  <div class="hero-actions"><a class="btn secondary" href="{{ url_for('backtests') }}">Backtests</a></div>
+</section>
+
+{% if ui_warnings %}
+<article class="panel-card" style="margin-bottom: 18px;">
+  <div class="panel-header"><h2>Backtest detail warnings</h2><span class="status-badge warn">degraded</span></div>
+  <div class="panel-body">{% for warning in ui_warnings %}<p class="kpi-note">{{ warning }}</p>{% endfor %}</div>
+</article>
+{% endif %}
+
+<section class="summary-grid">
+  <article class="summary-card"><div class="kpi-label">Total Return</div><div class="kpi-value">{{ "%.2f%%"|format((report_summary.total_return or 0) * 100) }}</div><div class="kpi-note">Total PnL {{ report_summary.total_pnl }}</div></article>
+  <article class="summary-card"><div class="kpi-label">Win Rate</div><div class="kpi-value">{{ "%.2f%%"|format((report_summary.win_rate or 0) * 100) }}</div><div class="kpi-note">{{ report_summary.trade_count }} trades</div></article>
+  <article class="summary-card"><div class="kpi-label">MDD</div><div class="kpi-value">{{ "%.2f%%"|format((report_summary.max_drawdown or 0) * 100) }}</div><div class="kpi-note">Max drawdown</div></article>
+  <article class="summary-card"><div class="kpi-label">Profit Factor</div><div class="kpi-value">{{ report_summary.profit_factor or '-' }}</div><div class="kpi-note">Rejections {{ report_summary.rejection_count }}</div></article>
+</section>
+
+<section class="workspace-grid two-column" style="margin-bottom: 18px;">
+  <article class="panel-card">
+    <div class="panel-header"><h2>Executive Summary</h2><span class="state-pill">{{ report_summary.start_date }} → {{ report_summary.end_date }}</span></div>
+    <div class="panel-body">
+      <p>초기 자본 <strong>{{ report_summary.initial_equity or '-' }}</strong>에서 최종 equity <strong>{{ report_summary.final_equity or '-' }}</strong>로 종료했습니다.</p>
+      <p>Entry는 signal 다음 거래일 open, exit은 stop/target/max-hold/end-of-data 규칙을 따릅니다.</p>
+      {% if report_summary.duplicates %}
+      <p><span class="status-badge warn">Duplicate Signal Warning</span></p>
+      <p class="kpi-note">동일 조건 signal이 중복 반영된 이력이 있습니다. 최신 backtest engine은 input dedupe를 적용합니다.</p>
+      {% endif %}
+    </div>
+  </article>
+  <article class="panel-card">
+    <div class="panel-header"><h2>Backtest Config</h2><span class="state-pill">config</span></div>
+    <div class="panel-body">
+      <ul>
+        <li>Fee bps: {{ report_summary.config.fee_bps or '-' }}</li>
+        <li>Slippage bps: {{ report_summary.config.slippage_bps or '-' }}</li>
+        <li>Max hold days: {{ report_summary.config.max_hold_days or '-' }}</li>
+        <li>Max positions: {{ report_summary.config.max_positions or '-' }}</li>
+        <li>Max gross exposure: {{ report_summary.config.max_gross_exposure_pct or '-' }}</li>
+      </ul>
+    </div>
+  </article>
+</section>
+
+<section class="detail-grid" style="margin-bottom: 18px;">
+  <article class="panel-card">
+    <div class="panel-header"><h2>Symbol Contribution</h2></div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Symbol</th><th class="numeric">PnL</th></tr></thead><tbody>
+      {% for symbol, pnl in report_summary.symbol_contribution.items() %}<tr><td>{{ symbol }}</td><td class="numeric">{{ pnl }}</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </article>
+  <article class="panel-card">
+    <div class="panel-header"><h2>Strategy / Exit Summary</h2></div>
+    <div class="panel-body">
+      <h3>Strategy Contribution</h3>
+      <ul>{% for strategy, pnl in report_summary.strategy_contribution.items() %}<li>{{ strategy }}: {{ pnl }}</li>{% endfor %}</ul>
+      <h3>Exit Reasons</h3>
+      <ul>{% for reason, count in report_summary.exit_reasons.items() %}<li>{{ reason }}: {{ count }}</li>{% endfor %}</ul>
+    </div>
+  </article>
+</section>
+
+{% if report_summary.duplicates %}
+<article class="panel-card" style="margin-bottom: 18px;">
+  <div class="panel-header"><h2>Duplicate Signal Details</h2><span class="status-badge warn">review</span></div>
+  <div class="table-wrap">
+    <table><thead><tr><th>Duplicate Key</th><th class="numeric">Count</th></tr></thead><tbody>
+    {% for duplicate in report_summary.duplicates %}<tr><td>{{ duplicate.key }}</td><td class="numeric">{{ duplicate.count }}</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+</article>
+{% endif %}
+
+<section class="detail-grid">
+  <article class="panel-card">
+    <div class="panel-header"><h2>Trade Log</h2><span class="state-pill">{{ trades|length }} rows</span></div>
+    <div class="table-wrap">{% with rows=trades %}{% include "partials/dict_table.html" %}{% endwith %}</div>
+  </article>
+  <article class="panel-card">
+    <div class="panel-header"><h2>Equity Curve</h2><span class="state-pill">{{ equity_curve|length }} rows</span></div>
+    <div class="table-wrap">{% with rows=equity_curve %}{% include "partials/dict_table.html" %}{% endwith %}</div>
+  </article>
+</section>
+{% endblock %}

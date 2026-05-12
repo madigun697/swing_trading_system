@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Swing Dashboard{% endblock %}
+{% block content %}
+<section class="hero-card">
+  <div>
+    <p class="eyebrow">EOD Swing Trading</p>
+    <h1>Dashboard</h1>
+    <p class="hero-copy">Quant shared data를 읽고 Swing-owned schema에 저장된 시그널과 백테스트 결과를 빠르게 확인합니다.</p>
+  </div>
+  <div class="hero-actions">
+    <a class="btn" href="{{ url_for('signals') }}">시그널 보기</a>
+    <a class="btn secondary" href="{{ url_for('backtests') }}">백테스트 보기</a>
+  </div>
+</section>
+
+{% if ui_warnings %}
+<article class="panel-card" style="margin-bottom: 18px;">
+  <div class="panel-header"><h2>Dashboard warnings</h2><span class="status-badge warn">degraded</span></div>
+  <div class="panel-body">
+    {% for warning in ui_warnings %}<p class="kpi-note">{{ warning }}</p>{% endfor %}
+  </div>
+</article>
+{% endif %}
+
+<section class="summary-grid" aria-label="상태 요약">
+  <article class="summary-card">
+    <div class="kpi-label">Readiness</div>
+    <div class="kpi-value"><span class="status-badge {{ 'ok' if readiness.ok else 'warn' }}">{{ readiness.code }}</span></div>
+    <div class="kpi-note">{{ readiness.detail }}</div>
+  </article>
+  <article class="summary-card">
+    <div class="kpi-label">Latest Trade Date</div>
+    <div class="kpi-value">{{ latest_trade_date or '-' }}</div>
+    <div class="kpi-note">Quant shared price 기준</div>
+  </article>
+  <article class="summary-card">
+    <div class="kpi-label">Signals</div>
+    <div class="kpi-value">{{ signal_count }}</div>
+    <div class="kpi-note">Signal count: {{ signal_count }}</div>
+  </article>
+  <article class="summary-card">
+    <div class="kpi-label">Recent Runs</div>
+    <div class="kpi-value">{{ recent_runs|length }}</div>
+    <div class="kpi-note">최근 백테스트 run</div>
+  </article>
+</section>
+
+<section class="workspace-grid">
+  <article class="panel-card">
+    <div class="panel-header">
+      <h2>Recent Backtest Runs</h2>
+      <a class="state-pill" href="{{ url_for('backtests') }}">전체 보기</a>
+    </div>
+    <div class="panel-body">
+      {% include "partials/runs_table.html" %}
+    </div>
+  </article>
+</section>
+{% endblock %}

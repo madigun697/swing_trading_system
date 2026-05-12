@@ -38,6 +38,64 @@ def test_engine_enters_on_next_open_and_targets_after_entry_bar() -> None:
     assert trade.pnl == 90
 
 
+def test_engine_rejects_duplicate_signals() -> None:
+    duplicate = signal()
+    result = BacktestEngine().run(
+        signals=[signal(), duplicate],
+        prices_by_symbol={"AAA": [bar(1, open_price=101), bar(2, high=111, low=100)]},
+        config=BacktestConfig(fee_bps=0, slippage_bps=0),
+        run_id="test-run",
+    )
+
+    assert len(result.trades) == 1
+    assert any(rejection.reason == "duplicate_signal" for rejection in result.rejections)
+
+
+def test_engine_enforces_max_positions() -> None:
+    second = BacktestSignal(2, "BBB", date(2026, 1, 1), "pullback", 100, 95, 110, 5, 10)
+    result = BacktestEngine().run(
+        signals=[signal(), second],
+        prices_by_symbol={
+            "AAA": [PriceBar("AAA", date(2026, 1, 2), 100, 101, 99, 100), PriceBar("AAA", date(2026, 1, 3), 100, 101, 99, 100)],
+            "BBB": [PriceBar("BBB", date(2026, 1, 2), 100, 101, 99, 100), PriceBar("BBB", date(2026, 1, 3), 100, 101, 99, 100)],
+        },
+        config=BacktestConfig(fee_bps=0, slippage_bps=0, max_positions=1),
+        run_id="test-run",
+    )
+
+    assert len(result.trades) == 1
+    assert any(rejection.reason == "max_positions_exceeded" for rejection in result.rejections)
+
+
+def test_engine_enforces_gross_exposure_limit() -> None:
+    result = BacktestEngine().run(
+        signals=[signal()],
+        prices_by_symbol={"AAA": [bar(1, open_price=1000), bar(2, close=1001)]},
+        config=BacktestConfig(initial_equity=1000, fee_bps=0, slippage_bps=0, max_gross_exposure_pct=0.5),
+        run_id="test-run",
+    )
+
+    assert result.trades == ()
+    assert any(rejection.reason == "gross_exposure_exceeded" for rejection in result.rejections)
+
+
+def test_equity_curve_aggregates_same_day_exits() -> None:
+    second = BacktestSignal(2, "BBB", date(2026, 1, 1), "pullback", 100, 95, 110, 5, 10)
+    result = BacktestEngine().run(
+        signals=[signal(), second],
+        prices_by_symbol={
+            "AAA": [PriceBar("AAA", date(2026, 1, 2), 100, 101, 99, 100), PriceBar("AAA", date(2026, 1, 3), 100, 111, 99, 100)],
+            "BBB": [PriceBar("BBB", date(2026, 1, 2), 100, 101, 99, 100), PriceBar("BBB", date(2026, 1, 3), 100, 111, 99, 100)],
+        },
+        config=BacktestConfig(fee_bps=0, slippage_bps=0, max_positions=10),
+        run_id="test-run",
+    )
+
+    assert len(result.trades) == 2
+    assert len(result.equity_curve) == 1
+    assert result.equity_curve[0].details["trade_count"] == 2
+
+
 def test_engine_rejects_missing_next_bar() -> None:
     result = BacktestEngine().run([signal()], {"AAA": []}, BacktestConfig(), run_id="r")
 

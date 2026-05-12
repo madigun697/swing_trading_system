@@ -20,6 +20,9 @@ def calculate_metrics(trades: Sequence[BacktestTrade], equity_curve: Sequence[Eq
     expectancy = total_pnl / len(trades) if trades else 0.0
     max_drawdown = min((point.drawdown for point in equity_curve), default=0.0)
     exposure_days = sum(max(0, (trade.exit_date - trade.entry_date).days) for trade in trades)
+    symbol_contribution = _group_pnl(trades, "symbol")
+    strategy_contribution = _group_pnl(trades, "strategy")
+    top_symbol_pnl = max((abs(value) for value in symbol_contribution.values()), default=0.0)
     return {
         "trade_count": len(trades),
         "total_pnl": round(total_pnl, 6),
@@ -31,8 +34,9 @@ def calculate_metrics(trades: Sequence[BacktestTrade], equity_curve: Sequence[Eq
         "average_win": round(gross_profit / len(wins), 6) if wins else 0.0,
         "average_loss": round(sum(losses) / len(losses), 6) if losses else 0.0,
         "exposure_days": exposure_days,
-        "symbol_contribution": _group_pnl(trades, "symbol"),
-        "strategy_contribution": _group_pnl(trades, "strategy"),
+        "top_symbol_contribution_pct": round(top_symbol_pnl / abs(total_pnl), 8) if total_pnl else 0.0,
+        "symbol_contribution": symbol_contribution,
+        "strategy_contribution": strategy_contribution,
     }
 
 

@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     swing_fee_bps: float = Field(default=2.0, alias="SWING_FEE_BPS")
     swing_slippage_bps: float = Field(default=10.0, alias="SWING_SLIPPAGE_BPS")
     swing_default_max_hold_days: int = Field(default=30, alias="SWING_DEFAULT_MAX_HOLD_DAYS")
+    swing_max_gross_exposure_pct: float = Field(default=1.0, alias="SWING_MAX_GROSS_EXPOSURE_PCT")
 
     swing_watchlist_bucket: str = Field(default="swing-watchlists", alias="SWING_WATCHLIST_BUCKET")
     swing_backtest_bucket: str = Field(default="swing-backtests", alias="SWING_BACKTEST_BUCKET")

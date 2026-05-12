@@ -1,0 +1,12 @@
+{% if rows %}
+<table>
+  <thead><tr>{% for key in rows[0].keys() %}<th>{{ key }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row in rows %}
+    <tr>{% for key, value in row.items() %}<td>{{ value }}</td>{% endfor %}</tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state">No rows.</div>
+{% endif %}

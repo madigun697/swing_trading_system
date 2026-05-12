@@ -115,6 +115,8 @@ def test_run_backtest_handler_dry_run(monkeypatch) -> None:
         fee_bps=None,
         slippage_bps=None,
         max_hold_days=None,
+        max_positions=None,
+        max_gross_exposure_pct=None,
         dry_run=True,
     )
 

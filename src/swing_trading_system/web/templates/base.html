@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Swing Trading System{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='css/app.css') }}">
+</head>
+<body>
+  <div class="page-shell">
+    <nav class="page-nav" aria-label="주요 화면">
+      <a class="page-brand" href="{{ url_for('index') }}">Swing Trading System</a>
+      <a class="page-tab" href="{{ url_for('index') }}" {% if active_page == 'dashboard' %}aria-current="page"{% endif %}>Dashboard</a>
+      <a class="page-tab" href="{{ url_for('signals') }}" {% if active_page == 'signals' %}aria-current="page"{% endif %}>Signals</a>
+      <a class="page-tab" href="{{ url_for('backtests') }}" {% if active_page == 'backtests' %}aria-current="page"{% endif %}>Backtests</a>
+      <a class="page-tab" href="{{ url_for('healthz') }}">Health JSON</a>
+    </nav>
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>
