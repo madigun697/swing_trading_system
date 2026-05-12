@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     swing_max_positions: int = Field(default=5, alias="SWING_MAX_POSITIONS")
     swing_risk_per_trade_pct: float = Field(default=0.01, alias="SWING_RISK_PER_TRADE_PCT")
     swing_account_equity: float = Field(default=100_000.0, alias="SWING_ACCOUNT_EQUITY")
+    swing_fee_bps: float = Field(default=2.0, alias="SWING_FEE_BPS")
+    swing_slippage_bps: float = Field(default=10.0, alias="SWING_SLIPPAGE_BPS")
+    swing_default_max_hold_days: int = Field(default=30, alias="SWING_DEFAULT_MAX_HOLD_DAYS")
 
     swing_watchlist_bucket: str = Field(default="swing-watchlists", alias="SWING_WATCHLIST_BUCKET")
     swing_backtest_bucket: str = Field(default="swing-backtests", alias="SWING_BACKTEST_BUCKET")

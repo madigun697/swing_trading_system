@@ -15,6 +15,7 @@ def test_build_parser_accepts_required_commands() -> None:
     assert parser.parse_args(["init-db"]).command == "init-db"
     assert parser.parse_args(["backfill-bootstrap"]).command == "backfill-bootstrap"
     assert parser.parse_args(["run-daily", "--as-of", "2026-01-01", "--dry-run"]).command == "run-daily"
+    assert parser.parse_args(["run-backtest", "--start-date", "2026-01-01", "--dry-run"]).command == "run-backtest"
 
 
 def test_check_connection_handler_reports_ok(monkeypatch) -> None:
@@ -77,6 +78,52 @@ def test_run_daily_dry_run_handler(monkeypatch) -> None:
     assert payload["dry_run"] is True
     assert payload["feature_count"] == 2
     assert payload["would_write"] == {"feature_rows": 0, "signals": 0, "completed_runs": 0}
+
+
+def test_run_backtest_handler_dry_run(monkeypatch) -> None:
+    class FakeRepository:
+        def __init__(self, settings=None) -> None:
+            pass
+
+        def fetch_signals(self, **kwargs):
+            return ["signal"]
+
+        def fetch_prices_for_signals(self, signals, end_date=None, max_hold_days=20):
+            return {"AAA": []}
+
+        def save_result(self, result):
+            raise AssertionError("dry-run must not save")
+
+    class FakeResult:
+        run_id = "r1"
+        trades = [object()]
+        rejections = []
+        metrics = {"total_return": 0.01}
+
+    class FakeEngine:
+        def run(self, signals, prices_by_symbol, config):
+            return FakeResult()
+
+    monkeypatch.setattr(cli, "BacktestRepository", FakeRepository)
+    monkeypatch.setattr(cli, "BacktestEngine", lambda: FakeEngine())
+    args = Namespace(
+        start_date="2026-01-01",
+        end_date=None,
+        strategy=None,
+        symbols=None,
+        initial_equity=None,
+        fee_bps=None,
+        slippage_bps=None,
+        max_hold_days=None,
+        dry_run=True,
+    )
+
+    code, payload = cli.handle_run_backtest(args, Settings(_env_file=None))
+
+    assert code == 0
+    assert payload["dry_run"] is True
+    assert payload["trade_count"] == 1
+    assert payload["trades_saved"] == 0
 
 
 def test_backfill_bootstrap_handler(monkeypatch) -> None:

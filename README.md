@@ -17,6 +17,8 @@ uv run swing-system init-db
 uv run swing-system backfill-bootstrap
 uv run swing-system run-daily --max-universe 10 --dry-run
 uv run swing-system run-daily --max-universe 10
+uv run swing-system run-backtest --start-date 2026-05-01 --end-date 2026-05-01 --dry-run
+uv run swing-system run-backtest --start-date 2026-05-01 --end-date 2026-05-01
 uv run uvicorn swing_trading_system.web.app:app --host 0.0.0.0 --port 8401
 ```
 
@@ -48,3 +50,9 @@ Swing must not write to Quant-owned `raw.*`, `stg.*`, `meta.*`, or `mart.*`.
 `uv run swing-system run-daily` loads point-in-time EOD data, computes screening features, runs Pullback/Breakout v1, stores features in `swing_mart.swing_feature_store`, and stores strategy signals in `swing_meta.signal`.
 
 Use `--dry-run` to compute without writing.
+
+## Sprint 3 backtest and UI
+
+`uv run swing-system run-backtest` reads `swing_meta.signal`, enters at `t+1` open, applies stop/target/max-hold exits, and stores results in `swing_mart.backtest_trade_log` and `swing_mart.backtest_equity_curve`.
+
+Web UI v1 exposes `/`, `/signals`, `/backtests`, and `/backtests/{run_id}`.

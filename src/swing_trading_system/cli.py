@@ -8,6 +8,9 @@ from datetime import date
 from typing import Any, Sequence
 
 from swing_trading_system.backfill import backfill_sprint2_bootstrap
+from swing_trading_system.backtest.engine import BacktestEngine
+from swing_trading_system.backtest.models import BacktestConfig
+from swing_trading_system.backtest.repository import BacktestRepository
 from swing_trading_system.config import Settings
 from swing_trading_system.db import check_database_connection, initialize_schema
 from swing_trading_system.repositories.shared_market import SharedMarketRepository
@@ -34,6 +37,17 @@ def build_parser() -> argparse.ArgumentParser:
     run_daily.add_argument("--symbols", help="Comma-separated symbols; defaults to top liquid universe")
     run_daily.add_argument("--max-universe", type=int, default=None, help="Maximum universe size")
     run_daily.add_argument("--dry-run", action="store_true", help="Compute results without writing to Swing schemas")
+
+    run_backtest = subparsers.add_parser("run-backtest", help="Run Sprint 3 signal-based backtest")
+    run_backtest.add_argument("--start-date", help="Signal start date YYYY-MM-DD")
+    run_backtest.add_argument("--end-date", help="Signal end date YYYY-MM-DD")
+    run_backtest.add_argument("--strategy", help="Strategy filter")
+    run_backtest.add_argument("--symbols", help="Comma-separated symbols")
+    run_backtest.add_argument("--initial-equity", type=float, default=None)
+    run_backtest.add_argument("--fee-bps", type=float, default=None)
+    run_backtest.add_argument("--slippage-bps", type=float, default=None)
+    run_backtest.add_argument("--max-hold-days", type=int, default=None)
+    run_backtest.add_argument("--dry-run", action="store_true", help="Run without saving backtest results")
     return parser
 
 
@@ -82,6 +96,44 @@ def handle_backfill_bootstrap(settings: Settings | None = None) -> tuple[int, di
         swing_repository=SwingRepository(settings),
     )
     return (0, {"ok": True, **result.to_dict()})
+
+
+def handle_run_backtest(args: argparse.Namespace, settings: Settings | None = None) -> tuple[int, dict[str, Any]]:
+    settings = settings or Settings()
+    config = BacktestConfig(
+        initial_equity=args.initial_equity or settings.swing_account_equity,
+        fee_bps=args.fee_bps if args.fee_bps is not None else settings.swing_fee_bps,
+        slippage_bps=args.slippage_bps if args.slippage_bps is not None else settings.swing_slippage_bps,
+        max_hold_days=args.max_hold_days or settings.swing_default_max_hold_days,
+    )
+    repository = BacktestRepository(settings)
+    start_date = date.fromisoformat(args.start_date) if args.start_date else None
+    end_date = date.fromisoformat(args.end_date) if args.end_date else None
+    symbols = _parse_symbols(args.symbols)
+    signals = repository.fetch_signals(
+        start_date=start_date,
+        end_date=end_date,
+        strategy=args.strategy,
+        symbols=symbols,
+    )
+    prices = repository.fetch_prices_for_signals(signals, end_date=None, max_hold_days=config.max_hold_days)
+    result = BacktestEngine().run(signals=signals, prices_by_symbol=prices, config=config)
+    saved = {"trades_saved": 0, "equity_points_saved": 0}
+    if not args.dry_run:
+        saved = repository.save_result(result)
+    return (
+        0,
+        {
+            "ok": True,
+            "dry_run": args.dry_run,
+            "run_id": result.run_id,
+            "signal_count": len(signals),
+            "trade_count": len(result.trades),
+            "rejection_count": len(result.rejections),
+            "metrics": result.metrics,
+            **saved,
+        },
+    )
 
 
 def handle_run_daily(args: argparse.Namespace, settings: Settings | None = None) -> tuple[int, dict[str, Any]]:
@@ -182,6 +234,8 @@ def run(argv: Sequence[str] | None = None) -> int:
         code, payload = handle_backfill_bootstrap(settings)
     elif args.command == "run-daily":
         code, payload = handle_run_daily(args, settings)
+    elif args.command == "run-backtest":
+        code, payload = handle_run_backtest(args, settings)
     else:  # pragma: no cover - argparse prevents this path.
         parser.error(f"unknown command: {args.command}")
 
