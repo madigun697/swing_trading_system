@@ -32,3 +32,13 @@ def test_postgres_dsn_uses_runtime_values() -> None:
     )
 
     assert settings.postgres_dsn == "postgresql://user:pass@db.example:15432/swing"
+
+
+def test_aggressive_backtest_defaults() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.swing_max_positions == 10
+    assert settings.swing_max_position_pct == 0.125
+    assert settings.swing_max_gross_exposure_pct == 1.1
+    assert settings.swing_benchmark_symbol == "SPY"
+    assert settings.swing_enable_trailing_stop is True

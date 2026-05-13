@@ -7,9 +7,9 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Protocol, Sequence
 
-from swing_trading_system.screening.features import ScreeningFeatures, calculate_features
+from swing_trading_system.screening.features import calculate_features
 from swing_trading_system.screening.input_loader import ScreeningInputLoader
-from swing_trading_system.screening.screener import Screener, ScreeningCandidate
+from swing_trading_system.screening.screener import Screener
 from swing_trading_system.strategies.base import Strategy, StrategyContext, StrategySignal
 
 

@@ -79,6 +79,7 @@ class BacktestRepository:
         signals: list[BacktestSignal],
         end_date: date | None = None,
         max_hold_days: int = 20,
+        benchmark_symbol: str | None = None,
     ) -> dict[str, list[PriceBar]]:
         prices: dict[str, list[PriceBar]] = {}
         signal_dates_by_symbol: dict[str, list[date]] = {}
@@ -89,6 +90,16 @@ class BacktestRepository:
             effective_end = end_date or (max(signal_dates) + timedelta(days=max_hold_days * 3 + 15))
             prices[symbol] = self.fetch_price_bars(
                 symbol=symbol,
+                start_date=start_date,
+                end_date=effective_end,
+                max_hold_days=max_hold_days,
+            )
+        if benchmark_symbol and signal_dates_by_symbol:
+            all_signal_dates = [signal_date for signal_dates in signal_dates_by_symbol.values() for signal_date in signal_dates]
+            start_date = min(all_signal_dates)
+            effective_end = end_date or (max(all_signal_dates) + timedelta(days=max_hold_days * 3 + 15))
+            prices[benchmark_symbol] = self.fetch_price_bars(
+                symbol=benchmark_symbol,
                 start_date=start_date,
                 end_date=effective_end,
                 max_hold_days=max_hold_days,

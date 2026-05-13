@@ -1,77 +1,102 @@
 {% extends "base.html" %}
 {% block title %}Backtest {{ run_id }}{% endblock %}
 {% block content %}
-<section class="hero-card">
+<section class="hero-card compact">
   <div>
     <p class="eyebrow">Backtest Detail</p>
     <h1>{{ run_id }}</h1>
-    <p class="hero-copy">보고서와 동일한 핵심 summary, 기여도, 리스크 경고, trade log/equity curve 상세입니다.</p>
+    <p class="hero-copy">전략 성과, SPY 벤치마크, 리스크 지표, trade log와 일별 equity curve를 함께 확인합니다.</p>
   </div>
-  <div class="hero-actions"><a class="btn secondary" href="{{ url_for('backtests') }}">Backtests</a></div>
+  <div class="hero-actions">
+    <a class="btn" href="{{ url_for('backtest_run_form') }}">새 백테스트</a>
+    <a class="btn secondary" href="{{ url_for('backtests') }}">Backtests</a>
+  </div>
 </section>
 
 {% if ui_warnings %}
-<article class="panel-card" style="margin-bottom: 18px;">
+<article class="panel-card alert-panel">
   <div class="panel-header"><h2>Backtest detail warnings</h2><span class="status-badge warn">degraded</span></div>
   <div class="panel-body">{% for warning in ui_warnings %}<p class="kpi-note">{{ warning }}</p>{% endfor %}</div>
 </article>
 {% endif %}
 
-<section class="summary-grid">
-  <article class="summary-card"><div class="kpi-label">Total Return</div><div class="kpi-value">{{ "%.2f%%"|format((report_summary.total_return or 0) * 100) }}</div><div class="kpi-note">Total PnL {{ report_summary.total_pnl }}</div></article>
-  <article class="summary-card"><div class="kpi-label">Win Rate</div><div class="kpi-value">{{ "%.2f%%"|format((report_summary.win_rate or 0) * 100) }}</div><div class="kpi-note">{{ report_summary.trade_count }} trades</div></article>
-  <article class="summary-card"><div class="kpi-label">MDD</div><div class="kpi-value">{{ "%.2f%%"|format((report_summary.max_drawdown or 0) * 100) }}</div><div class="kpi-note">Max drawdown</div></article>
-  <article class="summary-card"><div class="kpi-label">Profit Factor</div><div class="kpi-value">{{ report_summary.profit_factor or '-' }}</div><div class="kpi-note">Rejections {{ report_summary.rejection_count }}</div></article>
+<section class="summary-grid six">
+  <article class="summary-card"><div class="kpi-label">Total Return</div><div class="kpi-value">{{ "%.2f%%"|format((report_summary.total_return or 0) * 100) }}</div><div class="kpi-note">PnL {{ "%.2f"|format(report_summary.total_pnl or 0) }}</div></article>
+  <article class="summary-card"><div class="kpi-label"><abbr title="최고점 대비 최대 하락률입니다.">MDD</abbr></div><div class="kpi-value">{{ "%.2f%%"|format((report_summary.max_drawdown or 0) * 100) }}</div><div class="kpi-note">목표 한도 -10%</div></article>
+  <article class="summary-card"><div class="kpi-label"><abbr title="일별 수익률의 변동성 대비 초과수익입니다.">Sharpe</abbr></div><div class="kpi-value">{{ "%.2f"|format(report_summary.sharpe_ratio or 0) }}</div><div class="kpi-note">Annualized</div></article>
+  <article class="summary-card"><div class="kpi-label">CAGR</div><div class="kpi-value">{{ "%.2f%%"|format((report_summary.cagr or 0) * 100) }}</div><div class="kpi-note">Annualized return</div></article>
+  <article class="summary-card"><div class="kpi-label"><abbr title="CAGR을 최대낙폭 절댓값으로 나눈 값입니다.">Calmar</abbr></div><div class="kpi-value">{{ "%.2f"|format(report_summary.calmar_ratio or 0) }}</div><div class="kpi-note">Return / drawdown</div></article>
+  <article class="summary-card"><div class="kpi-label">Profit Factor</div><div class="kpi-value">{{ "%.2f"|format(report_summary.profit_factor or 0) }}</div><div class="kpi-note">Rejections {{ report_summary.rejection_count }}</div></article>
 </section>
 
-<section class="workspace-grid two-column" style="margin-bottom: 18px;">
+<section class="workspace-grid two-column">
   <article class="panel-card">
-    <div class="panel-header"><h2>Executive Summary</h2><span class="state-pill">{{ report_summary.start_date }} → {{ report_summary.end_date }}</span></div>
+    <div class="panel-header">
+      <h2>Strategy vs {{ report_summary.benchmark_symbol }}</h2>
+      <span class="state-pill">{{ report_summary.start_date }} → {{ report_summary.end_date }}</span>
+    </div>
     <div class="panel-body">
-      <p>초기 자본 <strong>{{ report_summary.initial_equity or '-' }}</strong>에서 최종 equity <strong>{{ report_summary.final_equity or '-' }}</strong>로 종료했습니다.</p>
-      <p>Entry는 signal 다음 거래일 open, exit은 stop/target/max-hold/end-of-data 규칙을 따릅니다.</p>
-      {% if report_summary.duplicates %}
-      <p><span class="status-badge warn">Duplicate Signal Warning</span></p>
-      <p class="kpi-note">동일 조건 signal이 중복 반영된 이력이 있습니다. 최신 backtest engine은 input dedupe를 적용합니다.</p>
+      {% if report_summary.chart.strategy_points %}
+      <svg class="equity-chart" viewBox="0 0 720 220" role="img" aria-label="Strategy and benchmark equity curve">
+        <polyline class="chart-line benchmark" points="{{ report_summary.chart.benchmark_points }}"></polyline>
+        <polyline class="chart-line strategy" points="{{ report_summary.chart.strategy_points }}"></polyline>
+      </svg>
+      {% else %}
+      <div class="empty-state">No equity curve.</div>
       {% endif %}
+      <div class="comparison-grid">
+        <div><span>Strategy Return</span><strong>{{ "%.2f%%"|format((report_summary.total_return or 0) * 100) }}</strong></div>
+        <div><span>{{ report_summary.benchmark_symbol }} Return</span><strong>{{ "%.2f%%"|format((report_summary.benchmark_return or 0) * 100) }}</strong></div>
+        <div><span>Excess Return</span><strong>{{ "%.2f%%"|format((report_summary.excess_return or 0) * 100) }}</strong></div>
+        <div><span>{{ report_summary.benchmark_symbol }} MDD</span><strong>{{ "%.2f%%"|format((report_summary.benchmark_mdd or 0) * 100) }}</strong></div>
+      </div>
     </div>
   </article>
   <article class="panel-card">
-    <div class="panel-header"><h2>Backtest Config</h2><span class="state-pill">config</span></div>
-    <div class="panel-body">
-      <ul>
-        <li>Fee bps: {{ report_summary.config.fee_bps or '-' }}</li>
-        <li>Slippage bps: {{ report_summary.config.slippage_bps or '-' }}</li>
-        <li>Max hold days: {{ report_summary.config.max_hold_days or '-' }}</li>
-        <li>Max positions: {{ report_summary.config.max_positions or '-' }}</li>
-        <li>Max gross exposure: {{ report_summary.config.max_gross_exposure_pct or '-' }}</li>
-      </ul>
+    <div class="panel-header"><h2>Run Config</h2><span class="state-pill">aggressive</span></div>
+    <div class="panel-body metric-list">
+      <p><strong>Initial / Final</strong><span>{{ report_summary.initial_equity or '-' }} → {{ report_summary.final_equity or '-' }}</span></p>
+      <p><strong>Positions</strong><span>{{ report_summary.config.max_positions or '-' }} max · {{ report_summary.config.max_position_pct or '-' }} per name</span></p>
+      <p><strong><abbr title="포트폴리오 전체 매수 노출 한도입니다.">Gross Exposure</abbr></strong><span>{{ report_summary.config.max_gross_exposure_pct or '-' }}</span></p>
+      <p><strong><abbr title="목표가 이후 남은 수량을 이동평균으로 추적 청산합니다.">Trailing Stop</abbr></strong><span>{{ report_summary.config.enable_trailing_stop }}</span></p>
+      <p><strong>Fees / Slippage</strong><span>{{ report_summary.config.fee_bps or 0 }} bps / {{ report_summary.config.slippage_bps or 0 }} bps</span></p>
     </div>
   </article>
 </section>
 
-<section class="detail-grid" style="margin-bottom: 18px;">
+<section class="summary-grid">
+  <article class="summary-card"><div class="kpi-label">Win Rate</div><div class="kpi-value">{{ "%.2f%%"|format((report_summary.win_rate or 0) * 100) }}</div><div class="kpi-note">{{ report_summary.trade_count }} trades</div></article>
+  <article class="summary-card"><div class="kpi-label">Avg Hold</div><div class="kpi-value">{{ "%.1f"|format(report_summary.average_hold_days or 0) }}</div><div class="kpi-note">calendar days</div></article>
+  <article class="summary-card"><div class="kpi-label">Win Streak</div><div class="kpi-value">{{ report_summary.max_consecutive_wins or 0 }}</div><div class="kpi-note">max consecutive wins</div></article>
+  <article class="summary-card"><div class="kpi-label">Loss Streak</div><div class="kpi-value">{{ report_summary.max_consecutive_losses or 0 }}</div><div class="kpi-note">max consecutive losses</div></article>
+</section>
+
+<section class="detail-grid">
   <article class="panel-card">
     <div class="panel-header"><h2>Symbol Contribution</h2></div>
     <div class="table-wrap">
       <table><thead><tr><th>Symbol</th><th class="numeric">PnL</th></tr></thead><tbody>
-      {% for symbol, pnl in report_summary.symbol_contribution.items() %}<tr><td>{{ symbol }}</td><td class="numeric">{{ pnl }}</td></tr>{% endfor %}
+      {% for symbol, pnl in report_summary.symbol_contribution.items() %}<tr><td>{{ symbol }}</td><td class="numeric {{ 'positive' if pnl > 0 else 'negative' }}">{{ "%.2f"|format(pnl) }}</td></tr>{% endfor %}
       </tbody></table>
     </div>
   </article>
   <article class="panel-card">
     <div class="panel-header"><h2>Strategy / Exit Summary</h2></div>
-    <div class="panel-body">
-      <h3>Strategy Contribution</h3>
-      <ul>{% for strategy, pnl in report_summary.strategy_contribution.items() %}<li>{{ strategy }}: {{ pnl }}</li>{% endfor %}</ul>
-      <h3>Exit Reasons</h3>
-      <ul>{% for reason, count in report_summary.exit_reasons.items() %}<li>{{ reason }}: {{ count }}</li>{% endfor %}</ul>
+    <div class="panel-body split-list">
+      <div>
+        <h3>Strategy</h3>
+        {% for strategy, pnl in report_summary.strategy_contribution.items() %}<p><strong>{{ strategy }}</strong><span>{{ "%.2f"|format(pnl) }}</span></p>{% endfor %}
+      </div>
+      <div>
+        <h3>Exit Reasons</h3>
+        {% for reason, count in report_summary.exit_reasons.items() %}<p><strong>{{ reason }}</strong><span>{{ count }}</span></p>{% endfor %}
+      </div>
     </div>
   </article>
 </section>
 
 {% if report_summary.duplicates %}
-<article class="panel-card" style="margin-bottom: 18px;">
+<article class="panel-card alert-panel">
   <div class="panel-header"><h2>Duplicate Signal Details</h2><span class="status-badge warn">review</span></div>
   <div class="table-wrap">
     <table><thead><tr><th>Duplicate Key</th><th class="numeric">Count</th></tr></thead><tbody>
@@ -83,12 +108,42 @@
 
 <section class="detail-grid">
   <article class="panel-card">
-    <div class="panel-header"><h2>Trade Log</h2><span class="state-pill">{{ trades|length }} rows</span></div>
-    <div class="table-wrap">{% with rows=trades %}{% include "partials/dict_table.html" %}{% endwith %}</div>
+    <div class="panel-header"><h2>Trade Log</h2><span class="state-pill">{{ display_trades|length }} rows</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Symbol</th><th>Strategy</th><th>Entry</th><th>Exit</th><th>Reason</th><th class="numeric">Qty</th><th class="numeric">PnL</th><th class="numeric">Return</th></tr></thead>
+        <tbody>
+        {% for trade in display_trades %}
+          <tr>
+            <td>{{ trade.symbol }}</td><td>{{ trade.strategy or '-' }}</td><td>{{ trade.entry_date }}</td><td>{{ trade.exit_date }}</td><td>{{ trade.exit_reason }}</td>
+            <td class="numeric">{{ "%.2f"|format(trade.quantity or 0) }}</td>
+            <td class="numeric {{ 'positive' if trade.pnl > 0 else 'negative' }}">{{ "%.2f"|format(trade.pnl or 0) }}</td>
+            <td class="numeric">{{ "%.2f%%"|format((trade.return_pct or 0) * 100) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </article>
   <article class="panel-card">
-    <div class="panel-header"><h2>Equity Curve</h2><span class="state-pill">{{ equity_curve|length }} rows</span></div>
-    <div class="table-wrap">{% with rows=equity_curve %}{% include "partials/dict_table.html" %}{% endwith %}</div>
+    <div class="panel-header"><h2>Daily Equity</h2><span class="state-pill">{{ display_equity_curve|length }} rows</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th class="numeric">Equity</th><th class="numeric">Daily PnL</th><th class="numeric">Drawdown</th><th class="numeric">SPY Equity</th><th class="numeric">Open</th></tr></thead>
+        <tbody>
+        {% for point in display_equity_curve %}
+          <tr>
+            <td>{{ point.equity_date }}</td>
+            <td class="numeric">{{ "%.2f"|format(point.equity or 0) }}</td>
+            <td class="numeric {{ 'positive' if (point.daily_pnl or 0) > 0 else 'negative' }}">{{ "%.2f"|format(point.daily_pnl or 0) }}</td>
+            <td class="numeric">{{ "%.2f%%"|format((point.drawdown or 0) * 100) }}</td>
+            <td class="numeric">{{ "%.2f"|format(point.benchmark_equity or 0) }}</td>
+            <td class="numeric">{{ point.open_trade_count or 0 }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </article>
 </section>
 {% endblock %}

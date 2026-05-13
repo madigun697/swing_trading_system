@@ -71,7 +71,7 @@ def test_engine_enforces_gross_exposure_limit() -> None:
     result = BacktestEngine().run(
         signals=[signal()],
         prices_by_symbol={"AAA": [bar(1, open_price=1000), bar(2, close=1001)]},
-        config=BacktestConfig(initial_equity=1000, fee_bps=0, slippage_bps=0, max_gross_exposure_pct=0.5),
+        config=BacktestConfig(initial_equity=1000, fee_bps=0, slippage_bps=0, max_gross_exposure_pct=0.5, max_position_pct=0),
         run_id="test-run",
     )
 
@@ -92,8 +92,60 @@ def test_equity_curve_aggregates_same_day_exits() -> None:
     )
 
     assert len(result.trades) == 2
-    assert len(result.equity_curve) == 1
-    assert result.equity_curve[0].details["trade_count"] == 2
+    assert len(result.equity_curve) == 2
+    assert result.equity_curve[-1].details["trade_count"] == 2
+
+
+def test_engine_caps_position_size_by_max_position_pct() -> None:
+    large = BacktestSignal(1, "AAA", date(2026, 1, 1), "breakout", 100, 95, 110, 5, 100)
+    result = BacktestEngine().run(
+        [large],
+        {"AAA": [bar(1, open_price=100), bar(2, close=101)]},
+        BacktestConfig(initial_equity=1000, fee_bps=0, slippage_bps=0, max_position_pct=0.1),
+        run_id="r",
+    )
+
+    assert result.trades[0].quantity == 1
+
+
+def test_engine_partially_takes_target_then_trails_remainder() -> None:
+    result = BacktestEngine().run(
+        [signal()],
+        {
+            "AAA": [
+                bar(1, open_price=100, high=101, low=99, close=100),
+                bar(2, high=111, low=100, close=111),
+                bar(3, high=106, low=104, close=104),
+            ]
+        },
+        BacktestConfig(fee_bps=0, slippage_bps=0, trailing_ma_days=2, target_scale_out_pct=0.5),
+        run_id="r",
+    )
+
+    trade = result.trades[0]
+    assert trade.exit_reason == "target_then_trailing_stop"
+    assert trade.details["exit_legs"][0]["reason"] == "target"
+    assert trade.details["exit_legs"][1]["reason"] == "trailing_stop"
+    assert trade.pnl == 77.5
+
+
+def test_engine_adds_spy_benchmark_metrics() -> None:
+    result = BacktestEngine().run(
+        [signal()],
+        {
+            "AAA": [bar(1, open_price=100, close=100), bar(2, high=111, low=100, close=110)],
+            "SPY": [
+                PriceBar("SPY", date(2026, 1, 2), 100, 100, 100, 100),
+                PriceBar("SPY", date(2026, 1, 3), 110, 110, 110, 110),
+            ],
+        },
+        BacktestConfig(fee_bps=0, slippage_bps=0, benchmark_symbol="SPY"),
+        run_id="r",
+    )
+
+    assert result.metrics["benchmark_return"] == 0.1
+    assert result.metrics["benchmark_mdd"] == 0.0
+    assert result.metrics["excess_return"] is not None
 
 
 def test_engine_rejects_missing_next_bar() -> None:

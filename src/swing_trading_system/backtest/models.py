@@ -24,9 +24,15 @@ class BacktestConfig:
     initial_equity: float = 100_000.0
     fee_bps: float = 2.0
     slippage_bps: float = 10.0
-    max_hold_days: int = 20
-    max_positions: int = 5
-    max_gross_exposure_pct: float = 1.0
+    max_hold_days: int = 30
+    max_positions: int = 10
+    max_gross_exposure_pct: float = 1.1
+    max_position_pct: float = 0.125
+    pullback_size_multiplier: float = 1.0
+    benchmark_symbol: str = "SPY"
+    enable_trailing_stop: bool = True
+    target_scale_out_pct: float = 0.5
+    trailing_ma_days: int = 10
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

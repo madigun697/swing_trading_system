@@ -7,7 +7,10 @@
     <h1>Backtests</h1>
     <p class="hero-copy">Sprint 3 백테스트 run 결과입니다. trade log와 equity curve는 Swing mart schema에 저장됩니다.</p>
   </div>
-  <div class="hero-actions"><a class="btn secondary" href="{{ url_for('signals') }}">시그널 보기</a></div>
+  <div class="hero-actions">
+    <a class="btn" href="{{ url_for('backtest_run_form') }}">백테스트 실행</a>
+    <a class="btn secondary" href="{{ url_for('signals') }}">시그널 보기</a>
+  </div>
 </section>
 
 {% if ui_warnings %}

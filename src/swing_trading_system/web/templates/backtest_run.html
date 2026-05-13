@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Run Backtest{% endblock %}
+{% block content %}
+<section class="hero-card compact">
+  <div>
+    <p class="eyebrow">Backtest Runner</p>
+    <h1>백테스트 실행</h1>
+    <p class="hero-copy">공격형 수익 프로필을 기본값으로 사용해 저장된 signal을 재평가하고, 결과를 저장한 뒤 상세 화면에서 SPY와 비교합니다.</p>
+  </div>
+  <div class="hero-actions"><a class="btn secondary" href="{{ url_for('backtests') }}">최근 결과</a></div>
+</section>
+
+{% if ui_warnings %}
+<article class="panel-card alert-panel">
+  <div class="panel-header"><h2>실행 오류</h2><span class="status-badge warn">degraded</span></div>
+  <div class="panel-body">{% for warning in ui_warnings %}<p class="kpi-note">{{ warning }}</p>{% endfor %}</div>
+</article>
+{% endif %}
+
+<section class="run-layout">
+  <form method="post" action="{{ url_for('run_backtest_from_form') }}" class="panel-card run-form">
+    <div class="panel-header">
+      <h2>입력 설정</h2>
+      <span class="state-pill">aggressive_return</span>
+    </div>
+    <div class="panel-body form-grid">
+      <input type="hidden" name="risk_profile" value="{{ form_values.risk_profile }}">
+
+      <label class="field">
+        <span>Signal 시작일</span>
+        <input type="date" name="start_date" value="{{ form_values.start_date }}">
+        {% if errors.start_date %}<small class="field-error">{{ errors.start_date }}</small>{% endif %}
+      </label>
+      <label class="field">
+        <span>Signal 종료일</span>
+        <input type="date" name="end_date" value="{{ form_values.end_date }}">
+        {% if errors.end_date %}<small class="field-error">{{ errors.end_date }}</small>{% endif %}
+      </label>
+
+      <label class="field">
+        <span>Strategy</span>
+        <select name="strategy">
+          <option value="" {% if not form_values.strategy %}selected{% endif %}>전체</option>
+          <option value="breakout" {% if form_values.strategy == "breakout" %}selected{% endif %}>Breakout</option>
+          <option value="pullback" {% if form_values.strategy == "pullback" %}selected{% endif %}>Pullback</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Symbols</span>
+        <input type="text" name="symbols" value="{{ form_values.symbols }}" placeholder="예: NVDA,PLTR">
+        <small class="field-help">비워두면 해당 기간의 전체 signal을 사용합니다.</small>
+      </label>
+
+      <label class="field">
+        <span>Initial Equity</span>
+        <input type="number" step="any" min="1" name="initial_equity" value="{{ form_values.initial_equity }}">
+        {% if errors.initial_equity %}<small class="field-error">{{ errors.initial_equity }}</small>{% endif %}
+      </label>
+      <label class="field">
+        <span><abbr title="전략 성과를 비교할 기준 자산입니다.">Benchmark</abbr></span>
+        <input type="text" name="benchmark_symbol" value="{{ form_values.benchmark_symbol }}">
+        {% if errors.benchmark_symbol %}<small class="field-error">{{ errors.benchmark_symbol }}</small>{% endif %}
+      </label>
+
+      <label class="field">
+        <span>Max Positions</span>
+        <input type="number" step="1" min="1" name="max_positions" value="{{ form_values.max_positions }}">
+        {% if errors.max_positions %}<small class="field-error">{{ errors.max_positions }}</small>{% endif %}
+      </label>
+      <label class="field">
+        <span><abbr title="한 종목에 배정할 수 있는 최대 자본 비중입니다.">Max Position %</abbr></span>
+        <input type="number" step="0.001" min="0.001" name="max_position_pct" value="{{ form_values.max_position_pct }}">
+        {% if errors.max_position_pct %}<small class="field-error">{{ errors.max_position_pct }}</small>{% endif %}
+      </label>
+
+      <label class="field">
+        <span><abbr title="포트폴리오 전체 매수 노출 한도입니다. 1.10은 초기자본의 110%입니다.">Gross Exposure</abbr></span>
+        <input type="number" step="0.01" min="0.01" name="max_gross_exposure_pct" value="{{ form_values.max_gross_exposure_pct }}">
+        {% if errors.max_gross_exposure_pct %}<small class="field-error">{{ errors.max_gross_exposure_pct }}</small>{% endif %}
+      </label>
+      <label class="field">
+        <span>Pullback Size Multiplier</span>
+        <input type="number" step="0.01" min="0.01" name="pullback_size_multiplier" value="{{ form_values.pullback_size_multiplier }}">
+        {% if errors.pullback_size_multiplier %}<small class="field-error">{{ errors.pullback_size_multiplier }}</small>{% endif %}
+      </label>
+
+      <label class="field">
+        <span>Fee bps</span>
+        <input type="number" step="any" min="0" name="fee_bps" value="{{ form_values.fee_bps }}">
+      </label>
+      <label class="field">
+        <span>Slippage bps</span>
+        <input type="number" step="any" min="0" name="slippage_bps" value="{{ form_values.slippage_bps }}">
+      </label>
+
+      <label class="field">
+        <span>Max Hold Days</span>
+        <input type="number" step="1" min="1" name="max_hold_days" value="{{ form_values.max_hold_days }}">
+        {% if errors.max_hold_days %}<small class="field-error">{{ errors.max_hold_days }}</small>{% endif %}
+      </label>
+      <label class="field">
+        <span><abbr title="목표가 도달 시 일부 익절하고 남은 수량은 추세 추종으로 보유합니다.">Target Scale-out</abbr></span>
+        <input type="number" step="0.01" min="0.01" max="1" name="target_scale_out_pct" value="{{ form_values.target_scale_out_pct }}">
+        {% if errors.target_scale_out_pct %}<small class="field-error">{{ errors.target_scale_out_pct }}</small>{% endif %}
+      </label>
+
+      <label class="field">
+        <span><abbr title="목표가 이후 남은 수량의 추적 손절에 사용할 이동평균 일수입니다.">Trailing MA Days</abbr></span>
+        <input type="number" step="1" min="1" name="trailing_ma_days" value="{{ form_values.trailing_ma_days }}">
+        {% if errors.trailing_ma_days %}<small class="field-error">{{ errors.trailing_ma_days }}</small>{% endif %}
+      </label>
+      <label class="check-field">
+        <input type="checkbox" name="enable_trailing_stop" value="true" {% if form_values.enable_trailing_stop %}checked{% endif %}>
+        <span><abbr title="목표가 도달 후 남은 수량을 이동평균으로 추적 청산합니다.">Trailing Stop</abbr> 사용</span>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="btn" type="submit">백테스트 실행 및 저장</button>
+    </div>
+  </form>
+
+  <aside class="panel-card">
+    <div class="panel-header"><h2>기본 프로필</h2><span class="state-pill">MDD ≤ 10%</span></div>
+    <div class="panel-body metric-list">
+      <p><strong>목표</strong><span>MDD -10% 이내에서 수익률 우선</span></p>
+      <p><strong>기본 노출</strong><span>10 positions · 12.5% per name · 110% gross</span></p>
+      <p><strong>벤치마크</strong><span>SPY return / MDD / CAGR 비교</span></p>
+      <p><strong>청산</strong><span>목표가 50% 익절 후 10일선 trailing</span></p>
+    </div>
+  </aside>
+</section>
+{% endblock %}

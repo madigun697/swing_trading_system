@@ -14,7 +14,7 @@ class StrategyContext:
     as_of_date: date
     account_equity: float = 100_000.0
     risk_per_trade_pct: float = 0.01
-    max_position_pct: float = 0.20
+    max_position_pct: float = 0.125
 
     @property
     def risk_amount(self) -> float:

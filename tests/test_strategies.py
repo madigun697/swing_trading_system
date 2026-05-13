@@ -53,6 +53,24 @@ def test_breakout_strategy_generates_signal_with_risk_fields() -> None:
     assert signal is not None
     assert signal.strategy == "breakout"
     assert signal.stop_price < signal.entry_price < signal.target_price
+    assert signal.details["risk_multiple_target"] == 1.8
+
+
+def test_breakout_strategy_uses_strong_breakout_target_and_volume_threshold() -> None:
+    weak_volume = BreakoutStrategy().generate(
+        candidate(feature(previous_high_20=97.0, volume_ratio_20d=1.4)),
+        StrategyContext(as_of_date=date(2026, 1, 1)),
+    )
+    strong_volume = BreakoutStrategy().generate(
+        candidate(feature(previous_high_20=97.0, volume_ratio_20d=1.6)),
+        StrategyContext(as_of_date=date(2026, 1, 1)),
+    )
+
+    assert weak_volume is None
+    assert strong_volume is not None
+    assert strong_volume.details["breakout_strength"] == "strong"
+    assert strong_volume.details["required_volume_ratio_20d"] == 1.5
+    assert strong_volume.details["risk_multiple_target"] == 2.5
 
 
 def test_strategies_reject_failed_candidate() -> None:

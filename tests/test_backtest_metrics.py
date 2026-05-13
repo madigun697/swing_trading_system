@@ -5,7 +5,7 @@ from swing_trading_system.backtest.models import BacktestTrade, EquityCurvePoint
 
 
 def trade(pnl: float, symbol="AAA") -> BacktestTrade:
-    return BacktestTrade("r", 1, symbol, "pullback", date(2026, 1, 1), date(2026, 1, 2), 100, 101, 1, pnl, "target")
+    return BacktestTrade("r", 1, symbol, "pullback", date(2026, 1, 1), date(2026, 1, 2), 100, 101, 1, pnl, "target", {"entry_notional": 100})
 
 
 def test_metrics_handles_wins_losses_and_contributions() -> None:
@@ -17,6 +17,13 @@ def test_metrics_handles_wins_losses_and_contributions() -> None:
     assert metrics["win_rate"] == 0.5
     assert metrics["profit_factor"] == 2.0
     assert metrics["symbol_contribution"] == {"AAA": 1000, "BBB": -500}
+    assert metrics["max_consecutive_wins"] == 1
+    assert metrics["max_consecutive_losses"] == 1
+    assert metrics["average_hold_days"] == 1.0
+    assert metrics["expectancy_per_dollar"] == 2.5
+    assert "sharpe_ratio" in metrics
+    assert "cagr" in metrics
+    assert "calmar_ratio" in metrics
 
 
 def test_metrics_handles_empty_trades() -> None:

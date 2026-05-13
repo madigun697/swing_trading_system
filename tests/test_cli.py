@@ -16,7 +16,10 @@ def test_build_parser_accepts_required_commands() -> None:
     assert parser.parse_args(["backfill-bootstrap"]).command == "backfill-bootstrap"
     assert parser.parse_args(["backfill-signals", "--start-date", "2026-01-01", "--end-date", "2026-01-31"]).command == "backfill-signals"
     assert parser.parse_args(["run-daily", "--as-of", "2026-01-01", "--dry-run"]).command == "run-daily"
-    assert parser.parse_args(["run-backtest", "--start-date", "2026-01-01", "--dry-run"]).command == "run-backtest"
+    parsed = parser.parse_args(["run-backtest", "--start-date", "2026-01-01", "--benchmark-symbol", "SPY", "--max-position-pct", "0.125", "--dry-run"])
+    assert parsed.command == "run-backtest"
+    assert parsed.benchmark_symbol == "SPY"
+    assert parsed.max_position_pct == 0.125
 
 
 def test_check_connection_handler_reports_ok(monkeypatch) -> None:
@@ -115,7 +118,8 @@ def test_run_backtest_handler_dry_run(monkeypatch) -> None:
         def fetch_signals(self, **kwargs):
             return ["signal"]
 
-        def fetch_prices_for_signals(self, signals, end_date=None, max_hold_days=20):
+        def fetch_prices_for_signals(self, signals, end_date=None, max_hold_days=20, benchmark_symbol=None):
+            assert benchmark_symbol == "SPY"
             return {"AAA": []}
 
         def save_result(self, result):
@@ -150,6 +154,12 @@ def test_run_backtest_handler_dry_run(monkeypatch) -> None:
         max_hold_days=None,
         max_positions=None,
         max_gross_exposure_pct=None,
+        max_position_pct=None,
+        pullback_size_multiplier=None,
+        benchmark_symbol=None,
+        target_scale_out_pct=None,
+        trailing_ma_days=None,
+        disable_trailing_stop=False,
         dry_run=True,
     )
 

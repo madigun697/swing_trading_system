@@ -58,6 +58,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_backtest.add_argument("--max-hold-days", type=int, default=None)
     run_backtest.add_argument("--max-positions", type=int, default=None)
     run_backtest.add_argument("--max-gross-exposure-pct", type=float, default=None)
+    run_backtest.add_argument("--max-position-pct", type=float, default=None)
+    run_backtest.add_argument("--pullback-size-multiplier", type=float, default=None)
+    run_backtest.add_argument("--benchmark-symbol", default=None)
+    run_backtest.add_argument("--target-scale-out-pct", type=float, default=None)
+    run_backtest.add_argument("--trailing-ma-days", type=int, default=None)
+    run_backtest.add_argument("--disable-trailing-stop", action="store_true")
     run_backtest.add_argument("--dry-run", action="store_true", help="Run without saving backtest results")
     return parser
 
@@ -186,6 +192,28 @@ def handle_run_backtest(args: argparse.Namespace, settings: Settings | None = No
             if args.max_gross_exposure_pct is not None
             else settings.swing_max_gross_exposure_pct
         ),
+        max_position_pct=(
+            getattr(args, "max_position_pct", None)
+            if getattr(args, "max_position_pct", None) is not None
+            else settings.swing_max_position_pct
+        ),
+        pullback_size_multiplier=(
+            getattr(args, "pullback_size_multiplier", None)
+            if getattr(args, "pullback_size_multiplier", None) is not None
+            else settings.swing_pullback_size_multiplier
+        ),
+        benchmark_symbol=(getattr(args, "benchmark_symbol", None) or settings.swing_benchmark_symbol).upper(),
+        enable_trailing_stop=settings.swing_enable_trailing_stop and not bool(getattr(args, "disable_trailing_stop", False)),
+        target_scale_out_pct=(
+            getattr(args, "target_scale_out_pct", None)
+            if getattr(args, "target_scale_out_pct", None) is not None
+            else settings.swing_target_scale_out_pct
+        ),
+        trailing_ma_days=(
+            getattr(args, "trailing_ma_days", None)
+            if getattr(args, "trailing_ma_days", None) is not None
+            else settings.swing_trailing_ma_days
+        ),
     )
     repository = BacktestRepository(settings)
     start_date = date.fromisoformat(args.start_date) if args.start_date else None
@@ -197,7 +225,12 @@ def handle_run_backtest(args: argparse.Namespace, settings: Settings | None = No
         strategy=args.strategy,
         symbols=symbols,
     )
-    prices = repository.fetch_prices_for_signals(signals, end_date=None, max_hold_days=config.max_hold_days)
+    prices = repository.fetch_prices_for_signals(
+        signals,
+        end_date=None,
+        max_hold_days=config.max_hold_days,
+        benchmark_symbol=config.benchmark_symbol,
+    )
     result = BacktestEngine().run(signals=signals, prices_by_symbol=prices, config=config)
     saved = {"trades_saved": 0, "equity_points_saved": 0}
     if not args.dry_run:
@@ -254,6 +287,7 @@ def handle_run_daily(args: argparse.Namespace, settings: Settings | None = None)
             as_of_date=as_of_date,
             risk_per_trade_pct=settings.swing_risk_per_trade_pct,
             account_equity=settings.swing_account_equity,
+            max_position_pct=settings.swing_max_position_pct,
         ),
     )
     payload = {"ok": True, "dry_run": args.dry_run, **result.to_dict()}

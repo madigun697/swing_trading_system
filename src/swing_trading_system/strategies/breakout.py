@@ -19,7 +19,9 @@ class BreakoutStrategy:
         breakout_ratio = (close / previous_high) - 1.0
         if breakout_ratio < -0.005:
             return None
-        if (feature.volume_ratio_20d or 0.0) < 1.2:
+        breakout_strength = "strong" if breakout_ratio > 0.02 else "weak"
+        required_volume_ratio = 1.5 if breakout_strength == "strong" else 1.2
+        if (feature.volume_ratio_20d or 0.0) < required_volume_ratio:
             return None
         if feature.atr_pct is not None and feature.atr_pct > 0.18:
             return None
@@ -30,7 +32,8 @@ class BreakoutStrategy:
         risk_per_share, position_size = calculate_position_size(entry, stop, context)
         if risk_per_share <= 0 or position_size <= 0:
             return None
-        target = entry + (2.0 * risk_per_share)
+        risk_multiple_target = 2.5 if breakout_strength == "strong" else 1.8
+        target = entry + (risk_multiple_target * risk_per_share)
         return StrategySignal(
             symbol=candidate.symbol,
             signal_date=context.as_of_date,
@@ -45,7 +48,9 @@ class BreakoutStrategy:
             details={
                 **candidate.to_signal_details(),
                 "breakout_ratio": breakout_ratio,
+                "breakout_strength": breakout_strength,
                 "volume_ratio_20d": feature.volume_ratio_20d,
-                "risk_multiple_target": 2.0,
+                "required_volume_ratio_20d": required_volume_ratio,
+                "risk_multiple_target": risk_multiple_target,
             },
         )
