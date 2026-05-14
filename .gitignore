@@ -25,7 +25,8 @@ dbt/.user.yml
 
 # Local data volumes
 .data/
-backtest_result/
+backtest_results/
 
 # Backup files
 .bak
+run_grid_search.py
