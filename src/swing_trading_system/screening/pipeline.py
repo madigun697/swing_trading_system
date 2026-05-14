@@ -10,7 +10,11 @@ from typing import Any, Protocol, Sequence
 from swing_trading_system.screening.features import calculate_features
 from swing_trading_system.screening.input_loader import ScreeningInputLoader
 from swing_trading_system.screening.screener import Screener
-from swing_trading_system.strategies.base import Strategy, StrategyContext, StrategySignal
+from swing_trading_system.strategies.base import (
+    Strategy,
+    StrategyContext,
+    StrategySignal,
+)
 
 
 class ScreeningPersistence(Protocol):
@@ -19,11 +23,11 @@ class ScreeningPersistence(Protocol):
         run_date: date,
         universe_name: str | None = None,
         criteria: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        ...
+    ) -> dict[str, Any]: ...
 
-    def complete_screening_run(self, screening_run_id: int, result_count: int, status: str = "completed") -> dict[str, Any]:
-        ...
+    def complete_screening_run(
+        self, screening_run_id: int, result_count: int, status: str = "completed"
+    ) -> dict[str, Any]: ...
 
     def upsert_feature_store(
         self,
@@ -31,8 +35,7 @@ class ScreeningPersistence(Protocol):
         feature_date: date,
         feature_set: str,
         features: dict[str, Any],
-    ) -> dict[str, Any]:
-        ...
+    ) -> dict[str, Any]: ...
 
     def create_signal(
         self,
@@ -48,8 +51,7 @@ class ScreeningPersistence(Protocol):
         score: Decimal | float | None = None,
         reason: str | None = None,
         details: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        ...
+    ) -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -97,7 +99,7 @@ class ScreeningPipeline:
         symbols: list[str],
         as_of_date: date,
         universe_name: str | None = None,
-        feature_set: str = "screening_v1",
+        feature_set: str = "screening_v2_context",
         lookback_days: int = 365,
         benchmark_symbol: str = "SPY",
         context: StrategyContext | None = None,
@@ -113,11 +115,19 @@ class ScreeningPipeline:
             },
         )
         screening_run_id = int(screening_run["id"])
-        inputs = self.input_loader.load_universe(symbols=symbols, as_of_date=as_of_date, lookback_days=lookback_days)
+        inputs = self.input_loader.load_universe(
+            symbols=symbols, as_of_date=as_of_date, lookback_days=lookback_days
+        )
         benchmark_input = self.input_loader.load_symbol(
             symbol=benchmark_symbol,
             as_of_date=as_of_date,
             lookback_days=lookback_days,
+        )
+        load_context = getattr(self.input_loader, "load_context", None)
+        contexts = (
+            load_context(symbols=symbols, as_of_date=as_of_date)
+            if load_context is not None
+            else {}
         )
 
         features = [
@@ -126,6 +136,9 @@ class ScreeningPipeline:
                 as_of_date=as_of_date,
                 rows=list(screening_input.rows),
                 benchmark_rows=list(benchmark_input.rows),
+                security_metadata=contexts.get(symbol, {}).get("security_metadata"),
+                fundamental_rows=contexts.get(symbol, {}).get("fundamentals", ()),
+                filing_rows=contexts.get(symbol, {}).get("filings", ()),
             )
             for symbol, screening_input in inputs.items()
         ]
@@ -147,9 +160,13 @@ class ScreeningPipeline:
                     signals.append(signal)
 
         for signal in signals:
-            self.repository.create_signal(**signal.to_repository_kwargs(screening_run_id))
+            self.repository.create_signal(
+                **signal.to_repository_kwargs(screening_run_id)
+            )
 
-        self.repository.complete_screening_run(screening_run_id, result_count=len(signals))
+        self.repository.complete_screening_run(
+            screening_run_id, result_count=len(signals)
+        )
         return ScreeningPipelineResult(
             screening_run_id=screening_run_id,
             signal_count=len(signals),
@@ -174,7 +191,9 @@ class ScreeningPipeline:
         )
         screening_run_id = int(screening_run["id"])
 
-        inputs = self.input_loader.load_universe(symbols=symbols, as_of_date=as_of_date, lookback_days=lookback_days)
+        inputs = self.input_loader.load_universe(
+            symbols=symbols, as_of_date=as_of_date, lookback_days=lookback_days
+        )
         for symbol, screening_input in inputs.items():
             latest = screening_input.latest_row or {}
             self.repository.upsert_feature_store(
@@ -183,8 +202,12 @@ class ScreeningPipeline:
                 feature_set=feature_set,
                 features={
                     "row_count": len(screening_input.rows),
-                    "latest_trade_date": str(latest.get("trade_date")) if latest else None,
-                    "latest_close": str(latest.get("close")) if latest.get("close") is not None else None,
+                    "latest_trade_date": str(latest.get("trade_date"))
+                    if latest
+                    else None,
+                    "latest_close": str(latest.get("close"))
+                    if latest.get("close") is not None
+                    else None,
                 },
             )
 
@@ -199,7 +222,9 @@ class ScreeningPipeline:
                 details=candidate.details,
             )
 
-        self.repository.complete_screening_run(screening_run_id, result_count=len(candidates))
+        self.repository.complete_screening_run(
+            screening_run_id, result_count=len(candidates)
+        )
         return ScreeningPipelineResult(
             screening_run_id=screening_run_id,
             signal_count=len(candidates),

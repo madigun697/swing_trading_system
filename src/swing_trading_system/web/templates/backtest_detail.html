@@ -95,6 +95,44 @@
   </article>
 </section>
 
+<section class="detail-grid">
+  <article class="panel-card">
+    <div class="panel-header"><h2>Monthly Slice</h2></div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Month</th><th class="numeric">Trades</th><th class="numeric">PnL</th><th class="numeric">Win Rate</th><th class="numeric">Avg PnL</th></tr></thead><tbody>
+      {% for row in report_summary.monthly_slice_metrics %}<tr><td>{{ row.name }}</td><td class="numeric">{{ row.trade_count }}</td><td class="numeric {{ 'positive' if row.total_pnl > 0 else 'negative' }}">{{ "%.2f"|format(row.total_pnl) }}</td><td class="numeric">{{ "%.2f%%"|format(row.win_rate * 100) }}</td><td class="numeric">{{ "%.2f"|format(row.average_pnl) }}</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </article>
+  <article class="panel-card">
+    <div class="panel-header"><h2>Sector Slice</h2></div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Sector</th><th class="numeric">Trades</th><th class="numeric">PnL</th><th class="numeric">Win Rate</th><th class="numeric">Avg PnL</th></tr></thead><tbody>
+      {% for row in report_summary.sector_slice_metrics %}<tr><td>{{ row.name }}</td><td class="numeric">{{ row.trade_count }}</td><td class="numeric {{ 'positive' if row.total_pnl > 0 else 'negative' }}">{{ "%.2f"|format(row.total_pnl) }}</td><td class="numeric">{{ "%.2f%%"|format(row.win_rate * 100) }}</td><td class="numeric">{{ "%.2f"|format(row.average_pnl) }}</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </article>
+</section>
+
+<section class="detail-grid">
+  <article class="panel-card">
+    <div class="panel-header"><h2>Strategy Slice</h2></div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Strategy</th><th class="numeric">Trades</th><th class="numeric">PnL</th><th class="numeric">Win Rate</th><th class="numeric">Avg PnL</th></tr></thead><tbody>
+      {% for row in report_summary.strategy_slice_metrics %}<tr><td>{{ row.name }}</td><td class="numeric">{{ row.trade_count }}</td><td class="numeric {{ 'positive' if row.total_pnl > 0 else 'negative' }}">{{ "%.2f"|format(row.total_pnl) }}</td><td class="numeric">{{ "%.2f%%"|format(row.win_rate * 100) }}</td><td class="numeric">{{ "%.2f"|format(row.average_pnl) }}</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </article>
+  <article class="panel-card">
+    <div class="panel-header"><h2>Exit Slice</h2></div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Exit</th><th class="numeric">Trades</th><th class="numeric">PnL</th><th class="numeric">Win Rate</th><th class="numeric">Avg PnL</th></tr></thead><tbody>
+      {% for row in report_summary.exit_slice_metrics %}<tr><td>{{ row.name }}</td><td class="numeric">{{ row.trade_count }}</td><td class="numeric {{ 'positive' if row.total_pnl > 0 else 'negative' }}">{{ "%.2f"|format(row.total_pnl) }}</td><td class="numeric">{{ "%.2f%%"|format(row.win_rate * 100) }}</td><td class="numeric">{{ "%.2f"|format(row.average_pnl) }}</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </article>
+</section>
+
 {% if report_summary.duplicates %}
 <article class="panel-card alert-panel">
   <div class="panel-header"><h2>Duplicate Signal Details</h2><span class="status-badge warn">review</span></div>

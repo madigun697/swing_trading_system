@@ -60,11 +60,14 @@ class StrategySignal:
 class Strategy(Protocol):
     name: str
 
-    def generate(self, candidate: ScreeningCandidate, context: StrategyContext) -> StrategySignal | None:
-        ...
+    def generate(
+        self, candidate: ScreeningCandidate, context: StrategyContext
+    ) -> StrategySignal | None: ...
 
 
-def calculate_position_size(entry_price: float, stop_price: float, context: StrategyContext) -> tuple[float, float]:
+def calculate_position_size(
+    entry_price: float, stop_price: float, context: StrategyContext
+) -> tuple[float, float]:
     risk_per_share = entry_price - stop_price
     if risk_per_share <= 0:
         return 0.0, 0.0
@@ -72,3 +75,35 @@ def calculate_position_size(entry_price: float, stop_price: float, context: Stra
     max_position_value = context.account_equity * context.max_position_pct
     value_limited_size = max_position_value / entry_price if entry_price > 0 else 0.0
     return risk_per_share, max(0.0, min(risk_limited_size, value_limited_size))
+
+
+def market_position_multiplier(candidate: ScreeningCandidate) -> float:
+    feature = candidate.features
+    if feature.benchmark_above_ma200 is False:
+        return 0.0
+    if (
+        feature.benchmark_above_ma50 is False
+        and (feature.benchmark_return_20d or 0.0) < 0
+    ):
+        return 0.5
+    return 1.0
+
+
+def has_positive_momentum(candidate: ScreeningCandidate) -> bool:
+    feature = candidate.features
+    return (
+        feature.relative_strength_60d is not None
+        and feature.relative_strength_60d >= 0
+        and feature.return_60d is not None
+        and feature.return_60d >= 0
+        and feature.atr_pct is not None
+        and 0 < feature.atr_pct <= 0.08
+    )
+
+
+def has_quality_or_rs_strength(candidate: ScreeningCandidate) -> bool:
+    feature = candidate.features
+    return (feature.quality_score is not None and feature.quality_score >= 0.70) or (
+        feature.relative_strength_60d is not None
+        and feature.relative_strength_60d >= 0.35
+    )

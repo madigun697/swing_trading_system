@@ -13,8 +13,8 @@ class ScreenerConfig:
     min_price: float = 10.0
     min_average_dollar_volume: float = 10_000_000.0
     min_history_days: int = 200
-    max_atr_pct: float = 0.18
-    min_relative_strength_60d: float = -0.05
+    max_atr_pct: float = 0.08
+    min_relative_strength_60d: float = 0.0
     max_candidates: int = 50
 
 
@@ -70,6 +70,10 @@ class Screener:
             reasons.append("atr_out_of_range")
         if feature.relative_strength_60d is None or feature.relative_strength_60d < self.config.min_relative_strength_60d:
             reasons.append("weak_relative_strength")
+        if feature.return_60d is None or feature.return_60d < 0:
+            reasons.append("negative_60d_return")
+        if feature.benchmark_above_ma200 is False:
+            reasons.append("market_below_ma200")
         return reasons
 
     def _score_components(self, feature: ScreeningFeatures) -> dict[str, float]:
@@ -78,12 +82,16 @@ class Screener:
         volume_score = _bounded((feature.volume_ratio_20d or 1.0) - 1.0, lower=-0.5, upper=2.0)
         atr_score = 1.0 - _bounded(feature.atr_pct, lower=0.0, upper=self.config.max_atr_pct)
         trend_score = 1.0 if feature.trend_up else 0.0
+        quality_score = feature.quality_score if feature.quality_score is not None else 0.5
+        market_score = 1.0 if feature.benchmark_above_ma50 is not False else 0.5
         return {
-            "relative_strength": rs_score * 0.35,
+            "relative_strength": rs_score * 0.30,
             "momentum": momentum_score * 0.20,
-            "volume": volume_score * 0.15,
-            "volatility": atr_score * 0.15,
-            "trend": trend_score * 0.15,
+            "volume": volume_score * 0.12,
+            "volatility": atr_score * 0.13,
+            "trend": trend_score * 0.12,
+            "quality": quality_score * 0.08,
+            "market_regime": market_score * 0.05,
         }
 
 

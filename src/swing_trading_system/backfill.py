@@ -62,7 +62,11 @@ def backfill_sprint2_bootstrap(
             symbols=(),
         )
 
-    symbols = tuple(market_repository.fetch_top_liquid_symbols(as_of_date=latest_trade_date, limit=symbol_limit))
+    symbols = tuple(
+        market_repository.fetch_top_liquid_symbols(
+            as_of_date=latest_trade_date, limit=symbol_limit
+        )
+    )
     loader = ScreeningInputLoader(market_repository)
     pipeline = ScreeningPipeline(loader, swing_repository)
     pipeline_result = pipeline.run_candidates(
@@ -102,6 +106,15 @@ def _seed_strategy_configs(swing_repository: SwingRepository) -> int:
                 "breakout_lookback_days": 20,
                 "max_hold_days": 20,
                 "risk_per_trade_pct": 0.01,
+            },
+        },
+        {
+            "strategy_name": "quality_momentum",
+            "params": {
+                "trend_filter": "close_gt_ma20_gt_ma50_gt_ma200",
+                "min_relative_strength_60d": 0.15,
+                "min_quality_score": 0.60,
+                "risk_multiple_target": 3.0,
             },
         },
     )

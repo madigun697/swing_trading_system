@@ -51,12 +51,24 @@ class FakeBacktestRepository:
         return 1
 
     def list_recent_runs(self, limit=20):
-        return [{"run_id": "r1", "trade_count": 1, "total_pnl": 10, "start_date": date(2026, 1, 2), "end_date": date(2026, 1, 3)}]
+        return [
+            {
+                "run_id": "r1",
+                "trade_count": 1,
+                "total_pnl": 10,
+                "start_date": date(2026, 1, 2),
+                "end_date": date(2026, 1, 3),
+            }
+        ]
 
     def fetch_signals(self, limit=100, **kwargs):
-        return [BacktestSignal(1, "AAA", date(2026, 1, 1), "pullback", 100, 95, 110, 5, 10)]
+        return [
+            BacktestSignal(1, "AAA", date(2026, 1, 1), "pullback", 100, 95, 110, 5, 10)
+        ]
 
-    def fetch_prices_for_signals(self, signals, end_date=None, max_hold_days=20, benchmark_symbol=None):
+    def fetch_prices_for_signals(
+        self, signals, end_date=None, max_hold_days=20, benchmark_symbol=None
+    ):
         return {
             "AAA": [
                 PriceBar("AAA", date(2026, 1, 2), 100, 101, 99, 100, 1000),
@@ -70,10 +82,17 @@ class FakeBacktestRepository:
 
     def save_result(self, result):
         self.saved_run_id = result.run_id
-        return {"trades_saved": len(result.trades), "equity_points_saved": len(result.equity_curve), "summary_saved": 1}
+        return {
+            "trades_saved": len(result.trades),
+            "equity_points_saved": len(result.equity_curve),
+            "summary_saved": 1,
+        }
 
     def fetch_run_trades(self, run_id):
-        return [{"run_id": run_id, "symbol": "AAA", "pnl": 10}, {"run_id": run_id, "symbol": "BAD", "pnl": "not-a-number"}]
+        return [
+            {"run_id": run_id, "symbol": "AAA", "pnl": 10},
+            {"run_id": run_id, "symbol": "BAD", "pnl": "not-a-number"},
+        ]
 
     def fetch_run_equity_curve(self, run_id):
         return [{"run_id": run_id, "equity_date": date(2026, 1, 3), "equity": 100010}]
@@ -107,7 +126,16 @@ class FakeBacktestRepository:
                 "max_consecutive_losses": 0,
                 "expectancy_per_dollar": 0.001,
             },
-            "config": {"fee_bps": 2, "slippage_bps": 10, "max_hold_days": 30, "max_positions": 10, "max_position_pct": 0.125, "max_gross_exposure_pct": 1.1, "benchmark_symbol": "SPY", "enable_trailing_stop": True},
+            "config": {
+                "fee_bps": 2,
+                "slippage_bps": 10,
+                "max_hold_days": 30,
+                "max_positions": 10,
+                "max_position_pct": 0.125,
+                "max_gross_exposure_pct": 1.1,
+                "benchmark_symbol": "SPY",
+                "enable_trailing_stop": True,
+            },
             "rejections": [],
         }
 
@@ -129,6 +157,8 @@ def test_index_signals_and_backtests_routes_render() -> None:
     assert detail.status_code == 200
     assert "Strategy vs SPY" in detail.text
     assert "Symbol Contribution" in detail.text
+    assert "Monthly Slice" in detail.text
+    assert "Sector Slice" in detail.text
     assert "Sharpe" in detail.text
     assert c.get("/backtests/run").status_code == 200
     assert "백테스트 실행" in c.get("/backtests/run").text
@@ -142,13 +172,19 @@ def test_backtest_run_form_validates_and_redirects() -> None:
     assert invalid.status_code == 422
     assert "YYYY-MM-DD" in invalid.text
 
-    valid = c.post("/backtests/run", data={"start_date": "2026-01-01", "end_date": "2026-01-01"}, follow_redirects=False)
+    valid = c.post(
+        "/backtests/run",
+        data={"start_date": "2026-01-01", "end_date": "2026-01-01"},
+        follow_redirects=False,
+    )
     assert valid.status_code == 303
     assert "/backtests/" in valid.headers["location"]
 
 
 def test_index_renders_degraded_state_when_dependencies_fail() -> None:
-    c = TestClient(create_app(UnavailableSharedRepository(), FailingBacktestRepository()))
+    c = TestClient(
+        create_app(UnavailableSharedRepository(), FailingBacktestRepository())
+    )
     response = c.get("/")
 
     assert response.status_code == 200
@@ -165,4 +201,10 @@ def test_collection_routes_render_degraded_state_when_repository_fails() -> None
     assert "Backtests warnings" in c.get("/backtests").text
     assert c.get("/backtests/r1").status_code == 200
     assert "Backtest detail warnings" in c.get("/backtests/r1").text
-    assert c.post("/backtests/run", data={"start_date": "2026-01-01", "end_date": "2026-01-01"}).status_code == 503
+    assert (
+        c.post(
+            "/backtests/run",
+            data={"start_date": "2026-01-01", "end_date": "2026-01-01"},
+        ).status_code
+        == 503
+    )

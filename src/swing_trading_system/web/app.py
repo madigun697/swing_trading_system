@@ -52,7 +52,9 @@ def create_app(
         recent_runs = []
         ui_warnings: list[str] = []
         try:
-            latest_trade_date = app.state.shared_market_repository.fetch_latest_trade_date()
+            latest_trade_date = (
+                app.state.shared_market_repository.fetch_latest_trade_date()
+            )
         except Exception as exc:  # pragma: no cover - defensive dashboard fallback.
             ui_warnings.append(f"latest trade date unavailable: {type(exc).__name__}")
         try:
@@ -132,19 +134,34 @@ def create_app(
             )
         try:
             config = _config_from_form(form_values)
-            start_date = date.fromisoformat(form_values["start_date"]) if form_values.get("start_date") else None
-            end_date = date.fromisoformat(form_values["end_date"]) if form_values.get("end_date") else None
+            start_date = (
+                date.fromisoformat(form_values["start_date"])
+                if form_values.get("start_date")
+                else None
+            )
+            end_date = (
+                date.fromisoformat(form_values["end_date"])
+                if form_values.get("end_date")
+                else None
+            )
             symbols = _parse_symbols(str(form_values.get("symbols") or ""))
             strategy = str(form_values.get("strategy") or "") or None
             repository = app.state.backtest_repository
-            signals = repository.fetch_signals(start_date=start_date, end_date=end_date, strategy=strategy, symbols=symbols)
+            signals = repository.fetch_signals(
+                start_date=start_date,
+                end_date=end_date,
+                strategy=strategy,
+                symbols=symbols,
+            )
             prices = repository.fetch_prices_for_signals(
                 signals,
                 end_date=None,
                 max_hold_days=config.max_hold_days,
                 benchmark_symbol=config.benchmark_symbol,
             )
-            result = BacktestEngine().run(signals=signals, prices_by_symbol=prices, config=config)
+            result = BacktestEngine().run(
+                signals=signals, prices_by_symbol=prices, config=config
+            )
             repository.save_result(result)
         except Exception as exc:
             return templates.TemplateResponse(
@@ -157,7 +174,10 @@ def create_app(
                 ),
                 status_code=503,
             )
-        return RedirectResponse(url=str(request.url_for("backtest_detail", run_id=result.run_id)), status_code=303)
+        return RedirectResponse(
+            url=str(request.url_for("backtest_detail", run_id=result.run_id)),
+            status_code=303,
+        )
 
     @app.get("/backtests/{run_id}")
     async def backtest_detail(request: Request, run_id: str):
@@ -171,7 +191,11 @@ def create_app(
             summary = app.state.backtest_repository.fetch_run_summary(run_id)
         except Exception as exc:
             ui_warnings.append(f"backtest detail unavailable: {type(exc).__name__}")
-        total_pnl = _safe_float(summary.get("total_pnl")) if summary else sum(_safe_float(row.get("pnl")) for row in trades)
+        total_pnl = (
+            _safe_float(summary.get("total_pnl"))
+            if summary
+            else sum(_safe_float(row.get("pnl")) for row in trades)
+        )
         report_summary = _build_report_summary(run_id, trades, equity_curve, summary)
         return templates.TemplateResponse(
             request,
@@ -205,7 +229,9 @@ def _build_report_summary(
     exit_reasons: dict[str, int] = {}
     for trade in trades:
         details = trade.get("details") if isinstance(trade.get("details"), dict) else {}
-        signal = details.get("signal") if isinstance(details.get("signal"), dict) else {}
+        signal = (
+            details.get("signal") if isinstance(details.get("signal"), dict) else {}
+        )
         key = (
             trade.get("symbol"),
             signal.get("strategy") or details.get("strategy"),
@@ -217,14 +243,19 @@ def _build_report_summary(
         duplicate_counts[key] = duplicate_counts.get(key, 0) + 1
         reason = str(details.get("exit_reason") or "unknown")
         exit_reasons[reason] = exit_reasons.get(reason, 0) + 1
-    duplicates = [{"key": str(key), "count": count} for key, count in duplicate_counts.items() if count > 1]
+    duplicates = [
+        {"key": str(key), "count": count}
+        for key, count in duplicate_counts.items()
+        if count > 1
+    ]
     return {
         "run_id": run_id,
         "trade_count": summary.get("trade_count", len(trades)),
         "start_date": summary.get("start_date"),
         "end_date": summary.get("end_date"),
         "initial_equity": summary.get("initial_equity") or config.get("initial_equity"),
-        "final_equity": summary.get("final_equity") or (equity_curve[-1].get("equity") if equity_curve else None),
+        "final_equity": summary.get("final_equity")
+        or (equity_curve[-1].get("equity") if equity_curve else None),
         "total_pnl": summary.get("total_pnl") or metrics.get("total_pnl"),
         "total_return": summary.get("total_return") or metrics.get("total_return"),
         "max_drawdown": summary.get("max_drawdown") or metrics.get("max_drawdown"),
@@ -233,7 +264,9 @@ def _build_report_summary(
         "sharpe_ratio": metrics.get("sharpe_ratio"),
         "cagr": metrics.get("cagr"),
         "calmar_ratio": metrics.get("calmar_ratio"),
-        "benchmark_symbol": config.get("benchmark_symbol") or metrics.get("benchmark_symbol") or "SPY",
+        "benchmark_symbol": config.get("benchmark_symbol")
+        or metrics.get("benchmark_symbol")
+        or "SPY",
         "benchmark_return": metrics.get("benchmark_return"),
         "benchmark_mdd": metrics.get("benchmark_mdd"),
         "benchmark_cagr": metrics.get("benchmark_cagr"),
@@ -242,14 +275,73 @@ def _build_report_summary(
         "max_consecutive_losses": metrics.get("max_consecutive_losses"),
         "average_hold_days": metrics.get("average_hold_days"),
         "expectancy_per_dollar": metrics.get("expectancy_per_dollar"),
-        "rejection_count": summary.get("rejection_count") or metrics.get("rejection_count", 0),
+        "rejection_count": summary.get("rejection_count")
+        or metrics.get("rejection_count", 0),
         "symbol_contribution": metrics.get("symbol_contribution", {}),
         "strategy_contribution": metrics.get("strategy_contribution", {}),
         "exit_reasons": exit_reasons,
+        "monthly_slice_metrics": _slice_metrics(
+            trades, lambda trade: str(trade.get("entry_date"))[:7]
+        ),
+        "strategy_slice_metrics": _slice_metrics(trades, _trade_strategy),
+        "exit_slice_metrics": _slice_metrics(trades, _trade_exit_reason),
+        "sector_slice_metrics": _slice_metrics(trades, _trade_sector),
         "duplicates": duplicates,
         "config": config,
         "chart": _build_equity_chart(equity_curve),
     }
+
+
+def _slice_metrics(trades: list[dict[str, object]], key_fn) -> list[dict[str, object]]:
+    grouped: dict[str, dict[str, float]] = {}
+    for trade in trades:
+        key = key_fn(trade) or "unknown"
+        row = grouped.setdefault(
+            str(key), {"trade_count": 0.0, "total_pnl": 0.0, "wins": 0.0}
+        )
+        pnl = _safe_float(trade.get("pnl"))
+        row["trade_count"] += 1
+        row["total_pnl"] += pnl
+        row["wins"] += 1 if pnl > 0 else 0
+    return [
+        {
+            "name": name,
+            "trade_count": int(values["trade_count"]),
+            "total_pnl": round(values["total_pnl"], 6),
+            "win_rate": (values["wins"] / values["trade_count"])
+            if values["trade_count"]
+            else 0.0,
+            "average_pnl": (values["total_pnl"] / values["trade_count"])
+            if values["trade_count"]
+            else 0.0,
+        }
+        for name, values in sorted(grouped.items(), key=lambda item: item[0])
+    ]
+
+
+def _trade_strategy(trade: dict[str, object]) -> str:
+    details = trade.get("details") if isinstance(trade.get("details"), dict) else {}
+    signal = details.get("signal") if isinstance(details.get("signal"), dict) else {}
+    return str(details.get("strategy") or signal.get("strategy") or "unknown")
+
+
+def _trade_exit_reason(trade: dict[str, object]) -> str:
+    details = trade.get("details") if isinstance(trade.get("details"), dict) else {}
+    return str(details.get("exit_reason") or "unknown")
+
+
+def _trade_sector(trade: dict[str, object]) -> str:
+    details = trade.get("details") if isinstance(trade.get("details"), dict) else {}
+    signal = details.get("signal") if isinstance(details.get("signal"), dict) else {}
+    signal_details = (
+        signal.get("details") if isinstance(signal.get("details"), dict) else {}
+    )
+    features = (
+        signal_details.get("features")
+        if isinstance(signal_details.get("features"), dict)
+        else {}
+    )
+    return str(features.get("sector") or "unknown")
 
 
 def _default_run_form(settings: Settings) -> dict[str, str]:
@@ -271,7 +363,9 @@ def _default_run_form(settings: Settings) -> dict[str, str]:
         "benchmark_symbol": aggressive_defaults.benchmark_symbol,
         "target_scale_out_pct": str(aggressive_defaults.target_scale_out_pct),
         "trailing_ma_days": str(aggressive_defaults.trailing_ma_days),
-        "enable_trailing_stop": "true" if aggressive_defaults.enable_trailing_stop else "",
+        "enable_trailing_stop": "true"
+        if aggressive_defaults.enable_trailing_stop
+        else "",
     }
 
 
@@ -290,8 +384,15 @@ def _validate_run_form(form_values: dict[str, str]) -> dict[str, str]:
                 date.fromisoformat(value)
             except ValueError:
                 errors[field] = "YYYY-MM-DD 형식으로 입력해 주세요."
-    if form_values.get("start_date") and form_values.get("end_date") and "start_date" not in errors and "end_date" not in errors:
-        if date.fromisoformat(form_values["start_date"]) > date.fromisoformat(form_values["end_date"]):
+    if (
+        form_values.get("start_date")
+        and form_values.get("end_date")
+        and "start_date" not in errors
+        and "end_date" not in errors
+    ):
+        if date.fromisoformat(form_values["start_date"]) > date.fromisoformat(
+            form_values["end_date"]
+        ):
             errors["end_date"] = "종료일은 시작일 이후여야 합니다."
     positive_fields = {
         "initial_equity": "초기 자본",
@@ -362,16 +463,21 @@ def _display_trades(trades: list[dict[str, object]]) -> list[dict[str, object]]:
     rows = []
     for trade in trades:
         details = trade.get("details") if isinstance(trade.get("details"), dict) else {}
-        entry_notional = _safe_float(details.get("entry_notional")) or _safe_float(trade.get("entry_price")) * _safe_float(trade.get("quantity"))
+        entry_notional = _safe_float(details.get("entry_notional")) or _safe_float(
+            trade.get("entry_price")
+        ) * _safe_float(trade.get("quantity"))
         pnl = _safe_float(trade.get("pnl"))
         return_pct = pnl / entry_notional if entry_notional else 0.0
         rows.append(
             {
                 "symbol": trade.get("symbol"),
-                "strategy": details.get("strategy") or _signal_value(details, "strategy"),
+                "strategy": details.get("strategy")
+                or _signal_value(details, "strategy"),
                 "entry_date": trade.get("entry_date"),
                 "exit_date": trade.get("exit_date"),
-                "hold_days": _date_diff(trade.get("entry_date"), trade.get("exit_date")),
+                "hold_days": _date_diff(
+                    trade.get("entry_date"), trade.get("exit_date")
+                ),
                 "entry_price": trade.get("entry_price"),
                 "exit_price": trade.get("exit_price"),
                 "quantity": trade.get("quantity"),
@@ -384,7 +490,9 @@ def _display_trades(trades: list[dict[str, object]]) -> list[dict[str, object]]:
     return rows
 
 
-def _display_equity_curve(equity_curve: list[dict[str, object]]) -> list[dict[str, object]]:
+def _display_equity_curve(
+    equity_curve: list[dict[str, object]],
+) -> list[dict[str, object]]:
     rows = []
     for point in equity_curve:
         details = point.get("details") if isinstance(point.get("details"), dict) else {}
@@ -410,7 +518,9 @@ def _build_equity_chart(equity_curve: list[dict[str, object]]) -> dict[str, str]
     pad = 18
     strategy_values = [_safe_float(point.get("equity")) for point in equity_curve]
     benchmark_values = [
-        _safe_float((point.get("details") or {}).get("benchmark_equity")) if isinstance(point.get("details"), dict) else 0.0
+        _safe_float((point.get("details") or {}).get("benchmark_equity"))
+        if isinstance(point.get("details"), dict)
+        else 0.0
         for point in equity_curve
     ]
     values = [value for value in strategy_values + benchmark_values if value > 0]

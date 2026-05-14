@@ -20,34 +20,81 @@ from swing_trading_system.screening.pipeline import ScreeningPipeline
 from swing_trading_system.screening.screener import Screener, ScreenerConfig
 from swing_trading_system.screening.universe import UniverseSelector
 from swing_trading_system.storage import check_minio_connection
-from swing_trading_system.strategies import BreakoutStrategy, PullbackStrategy, StrategyContext
+from swing_trading_system.strategies import (
+    BreakoutStrategy,
+    PullbackStrategy,
+    QualityMomentumStrategy,
+    StrategyContext,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Swing trading system operational CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("check-connection", help="Check PostgreSQL and MinIO connectivity")
-    subparsers.add_parser("check-readiness", help="Check required Quant shared relations")
+    subparsers.add_parser(
+        "check-connection", help="Check PostgreSQL and MinIO connectivity"
+    )
+    subparsers.add_parser(
+        "check-readiness", help="Check required Quant shared relations"
+    )
     subparsers.add_parser("init-db", help="Initialize Swing-owned schemas and tables")
-    subparsers.add_parser("backfill-bootstrap", help="Seed Sprint 2 bootstrap data into Swing-owned schemas")
+    subparsers.add_parser(
+        "backfill-bootstrap",
+        help="Seed Sprint 2 bootstrap data into Swing-owned schemas",
+    )
 
-    backfill_signals = subparsers.add_parser("backfill-signals", help="Backfill daily screening/strategy signals over a date range")
-    backfill_signals.add_argument("--start-date", required=True, help="Backfill start date YYYY-MM-DD")
-    backfill_signals.add_argument("--end-date", required=True, help="Backfill end date YYYY-MM-DD")
-    backfill_signals.add_argument("--frequency", choices=("daily", "weekly", "monthly"), default="weekly")
+    backfill_signals = subparsers.add_parser(
+        "backfill-signals",
+        help="Backfill daily screening/strategy signals over a date range",
+    )
+    backfill_signals.add_argument(
+        "--start-date", required=True, help="Backfill start date YYYY-MM-DD"
+    )
+    backfill_signals.add_argument(
+        "--end-date", required=True, help="Backfill end date YYYY-MM-DD"
+    )
+    backfill_signals.add_argument(
+        "--frequency", choices=("daily", "weekly", "monthly"), default="weekly"
+    )
     backfill_signals.add_argument("--max-universe", type=int, default=None)
-    backfill_signals.add_argument("--symbols", help="Comma-separated symbols; defaults to top liquid universe")
-    backfill_signals.add_argument("--dry-run", action="store_true", help="Compute without writing Swing schema rows")
-    backfill_signals.add_argument("--force", action="store_true", help="Recompute dates even when signals already exist")
+    backfill_signals.add_argument(
+        "--symbols", help="Comma-separated symbols; defaults to top liquid universe"
+    )
+    backfill_signals.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Compute without writing Swing schema rows",
+    )
+    backfill_signals.add_argument(
+        "--force",
+        action="store_true",
+        help="Recompute dates even when signals already exist",
+    )
 
-    run_daily = subparsers.add_parser("run-daily", help="Run Sprint 2 screening and strategy pipeline")
-    run_daily.add_argument("--as-of", dest="as_of", help="As-of date in YYYY-MM-DD format; defaults to latest shared trade date")
-    run_daily.add_argument("--symbols", help="Comma-separated symbols; defaults to top liquid universe")
-    run_daily.add_argument("--max-universe", type=int, default=None, help="Maximum universe size")
-    run_daily.add_argument("--dry-run", action="store_true", help="Compute results without writing to Swing schemas")
+    run_daily = subparsers.add_parser(
+        "run-daily", help="Run Sprint 2 screening and strategy pipeline"
+    )
+    run_daily.add_argument(
+        "--as-of",
+        dest="as_of",
+        help="As-of date in YYYY-MM-DD format; defaults to latest shared trade date",
+    )
+    run_daily.add_argument(
+        "--symbols", help="Comma-separated symbols; defaults to top liquid universe"
+    )
+    run_daily.add_argument(
+        "--max-universe", type=int, default=None, help="Maximum universe size"
+    )
+    run_daily.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Compute results without writing to Swing schemas",
+    )
 
-    run_backtest = subparsers.add_parser("run-backtest", help="Run Sprint 3 signal-based backtest")
+    run_backtest = subparsers.add_parser(
+        "run-backtest", help="Run Sprint 3 signal-based backtest"
+    )
     run_backtest.add_argument("--start-date", help="Signal start date YYYY-MM-DD")
     run_backtest.add_argument("--end-date", help="Signal end date YYYY-MM-DD")
     run_backtest.add_argument("--strategy", help="Strategy filter")
@@ -64,7 +111,9 @@ def build_parser() -> argparse.ArgumentParser:
     run_backtest.add_argument("--target-scale-out-pct", type=float, default=None)
     run_backtest.add_argument("--trailing-ma-days", type=int, default=None)
     run_backtest.add_argument("--disable-trailing-stop", action="store_true")
-    run_backtest.add_argument("--dry-run", action="store_true", help="Run without saving backtest results")
+    run_backtest.add_argument(
+        "--dry-run", action="store_true", help="Run without saving backtest results"
+    )
     return parser
 
 
@@ -76,7 +125,9 @@ def _print_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, indent=2, default=_json_default, sort_keys=True))
 
 
-def handle_check_connection(settings: Settings | None = None) -> tuple[int, dict[str, Any]]:
+def handle_check_connection(
+    settings: Settings | None = None,
+) -> tuple[int, dict[str, Any]]:
     settings = settings or Settings()
     database = check_database_connection(settings)
     try:
@@ -96,7 +147,9 @@ def handle_check_connection(settings: Settings | None = None) -> tuple[int, dict
     )
 
 
-def handle_check_readiness(settings: Settings | None = None) -> tuple[int, dict[str, Any]]:
+def handle_check_readiness(
+    settings: Settings | None = None,
+) -> tuple[int, dict[str, Any]]:
     readiness = SharedMarketRepository(settings).check_readiness()
     return (0 if readiness.ok else 1, readiness.to_dict())
 
@@ -106,7 +159,9 @@ def handle_init_db(settings: Settings | None = None) -> tuple[int, dict[str, Any
     return (0, {"ok": True, **result})
 
 
-def handle_backfill_bootstrap(settings: Settings | None = None) -> tuple[int, dict[str, Any]]:
+def handle_backfill_bootstrap(
+    settings: Settings | None = None,
+) -> tuple[int, dict[str, Any]]:
     settings = settings or Settings()
     result = backfill_sprint2_bootstrap(
         market_repository=SharedMarketRepository(settings),
@@ -115,7 +170,9 @@ def handle_backfill_bootstrap(settings: Settings | None = None) -> tuple[int, di
     return (0, {"ok": True, **result.to_dict()})
 
 
-def handle_backfill_signals(args: argparse.Namespace, settings: Settings | None = None) -> tuple[int, dict[str, Any]]:
+def handle_backfill_signals(
+    args: argparse.Namespace, settings: Settings | None = None
+) -> tuple[int, dict[str, Any]]:
     settings = settings or Settings()
     market_repository = SharedMarketRepository(settings)
     start_date = date.fromisoformat(args.start_date)
@@ -131,8 +188,12 @@ def handle_backfill_signals(args: argparse.Namespace, settings: Settings | None 
     skipped_existing = 0
     for as_of_date in selected_dates:
         if not args.force and not args.dry_run:
-            existing = backtest_repository.fetch_signals(start_date=as_of_date, end_date=as_of_date, symbols=symbols)
-            feature_rows = swing_repository.count_feature_rows(as_of_date, symbols=symbols)
+            existing = backtest_repository.fetch_signals(
+                start_date=as_of_date, end_date=as_of_date, symbols=symbols
+            )
+            feature_rows = swing_repository.count_feature_rows(
+                as_of_date, symbols=symbols
+            )
             if existing or feature_rows:
                 skipped_existing += 1
                 runs.append(
@@ -179,12 +240,16 @@ def handle_backfill_signals(args: argparse.Namespace, settings: Settings | None 
     )
 
 
-def handle_run_backtest(args: argparse.Namespace, settings: Settings | None = None) -> tuple[int, dict[str, Any]]:
+def handle_run_backtest(
+    args: argparse.Namespace, settings: Settings | None = None
+) -> tuple[int, dict[str, Any]]:
     settings = settings or Settings()
     config = BacktestConfig(
         initial_equity=args.initial_equity or settings.swing_account_equity,
         fee_bps=args.fee_bps if args.fee_bps is not None else settings.swing_fee_bps,
-        slippage_bps=args.slippage_bps if args.slippage_bps is not None else settings.swing_slippage_bps,
+        slippage_bps=args.slippage_bps
+        if args.slippage_bps is not None
+        else settings.swing_slippage_bps,
         max_hold_days=args.max_hold_days or settings.swing_default_max_hold_days,
         max_positions=args.max_positions or settings.swing_max_positions,
         max_gross_exposure_pct=(
@@ -202,8 +267,11 @@ def handle_run_backtest(args: argparse.Namespace, settings: Settings | None = No
             if getattr(args, "pullback_size_multiplier", None) is not None
             else settings.swing_pullback_size_multiplier
         ),
-        benchmark_symbol=(getattr(args, "benchmark_symbol", None) or settings.swing_benchmark_symbol).upper(),
-        enable_trailing_stop=settings.swing_enable_trailing_stop and not bool(getattr(args, "disable_trailing_stop", False)),
+        benchmark_symbol=(
+            getattr(args, "benchmark_symbol", None) or settings.swing_benchmark_symbol
+        ).upper(),
+        enable_trailing_stop=settings.swing_enable_trailing_stop
+        and not bool(getattr(args, "disable_trailing_stop", False)),
         target_scale_out_pct=(
             getattr(args, "target_scale_out_pct", None)
             if getattr(args, "target_scale_out_pct", None) is not None
@@ -231,7 +299,9 @@ def handle_run_backtest(args: argparse.Namespace, settings: Settings | None = No
         max_hold_days=config.max_hold_days,
         benchmark_symbol=config.benchmark_symbol,
     )
-    result = BacktestEngine().run(signals=signals, prices_by_symbol=prices, config=config)
+    result = BacktestEngine().run(
+        signals=signals, prices_by_symbol=prices, config=config
+    )
     saved = {"trades_saved": 0, "equity_points_saved": 0}
     if not args.dry_run:
         saved = repository.save_result(result)
@@ -244,8 +314,12 @@ def handle_run_backtest(args: argparse.Namespace, settings: Settings | None = No
             "signal_count": len(signals),
             "signal_start_date": result.signal_start_date,
             "signal_end_date": result.signal_end_date,
-            "trade_start_date": min((trade.entry_date for trade in result.trades), default=None),
-            "trade_end_date": max((trade.exit_date for trade in result.trades), default=None),
+            "trade_start_date": min(
+                (trade.entry_date for trade in result.trades), default=None
+            ),
+            "trade_end_date": max(
+                (trade.exit_date for trade in result.trades), default=None
+            ),
             "trade_count": len(result.trades),
             "rejection_count": len(result.rejections),
             "metrics": result.metrics,
@@ -254,7 +328,9 @@ def handle_run_backtest(args: argparse.Namespace, settings: Settings | None = No
     )
 
 
-def handle_run_daily(args: argparse.Namespace, settings: Settings | None = None) -> tuple[int, dict[str, Any]]:
+def handle_run_daily(
+    args: argparse.Namespace, settings: Settings | None = None
+) -> tuple[int, dict[str, Any]]:
     settings = settings or Settings()
     market_repository = SharedMarketRepository(settings)
     as_of_date = _parse_as_of(args.as_of, market_repository)
@@ -277,7 +353,7 @@ def handle_run_daily(args: argparse.Namespace, settings: Settings | None = None)
                 max_candidates=settings.swing_max_positions,
             )
         ),
-        strategies=(PullbackStrategy(), BreakoutStrategy()),
+        strategies=(PullbackStrategy(), BreakoutStrategy(), QualityMomentumStrategy()),
     )
     result = pipeline.run_daily(
         symbols=list(universe.symbols),
@@ -338,16 +414,47 @@ class _DryRunRepository:
         self.signals: list[dict[str, Any]] = []
         self.completed: list[dict[str, Any]] = []
 
-    def create_screening_run(self, run_date: date, universe_name: str | None = None, criteria: dict[str, Any] | None = None) -> dict[str, Any]:
-        self.run = {"id": 0, "run_date": run_date, "universe_name": universe_name, "criteria": criteria or {}}
+    def create_screening_run(
+        self,
+        run_date: date,
+        universe_name: str | None = None,
+        criteria: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        self.run = {
+            "id": 0,
+            "run_date": run_date,
+            "universe_name": universe_name,
+            "criteria": criteria or {},
+        }
         return self.run
 
-    def complete_screening_run(self, screening_run_id: int, result_count: int, status: str = "completed") -> dict[str, Any]:
-        self.completed.append({"screening_run_id": screening_run_id, "result_count": result_count, "status": status})
+    def complete_screening_run(
+        self, screening_run_id: int, result_count: int, status: str = "completed"
+    ) -> dict[str, Any]:
+        self.completed.append(
+            {
+                "screening_run_id": screening_run_id,
+                "result_count": result_count,
+                "status": status,
+            }
+        )
         return self.completed[-1]
 
-    def upsert_feature_store(self, symbol: str, feature_date: date, feature_set: str, features: dict[str, Any]) -> dict[str, Any]:
-        self.features.append({"symbol": symbol, "feature_date": feature_date, "feature_set": feature_set, "features": features})
+    def upsert_feature_store(
+        self,
+        symbol: str,
+        feature_date: date,
+        feature_set: str,
+        features: dict[str, Any],
+    ) -> dict[str, Any]:
+        self.features.append(
+            {
+                "symbol": symbol,
+                "feature_date": feature_date,
+                "feature_set": feature_set,
+                "features": features,
+            }
+        )
         return self.features[-1]
 
     def create_signal(self, **kwargs: Any) -> dict[str, Any]:
@@ -355,7 +462,11 @@ class _DryRunRepository:
         return kwargs
 
     def summary(self) -> dict[str, int]:
-        return {"feature_rows": len(self.features), "signals": len(self.signals), "completed_runs": len(self.completed)}
+        return {
+            "feature_rows": len(self.features),
+            "signals": len(self.signals),
+            "completed_runs": len(self.completed),
+        }
 
 
 def run(argv: Sequence[str] | None = None) -> int:

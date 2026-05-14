@@ -64,7 +64,9 @@ class SharedMarketRepository:
             with postgres_connection(self.settings) as conn, conn.cursor() as cur:
                 missing = []
                 for relation in REQUIRED_RELATIONS:
-                    cur.execute("SELECT to_regclass(%s) IS NOT NULL AS exists", (relation,))
+                    cur.execute(
+                        "SELECT to_regclass(%s) IS NOT NULL AS exists", (relation,)
+                    )
                     row = cur.fetchone()
                     if not row or not row["exists"]:
                         missing.append(relation)
@@ -76,13 +78,21 @@ class SharedMarketRepository:
                         checked_relations=REQUIRED_RELATIONS,
                     )
 
-                cur.execute("SELECT MAX(effective_as_of)::text AS latest FROM stg.stg_daily_prices")
+                cur.execute(
+                    "SELECT MAX(effective_as_of)::text AS latest FROM stg.stg_daily_prices"
+                )
                 price_row = cur.fetchone() or {}
-                metadata["daily_prices_latest_effective_as_of"] = price_row.get("latest")
+                metadata["daily_prices_latest_effective_as_of"] = price_row.get(
+                    "latest"
+                )
 
-                cur.execute("SELECT MAX(observation_date)::text AS latest FROM stg.stg_benchmark_series")
+                cur.execute(
+                    "SELECT MAX(observation_date)::text AS latest FROM stg.stg_benchmark_series"
+                )
                 benchmark_row = cur.fetchone() or {}
-                metadata["benchmark_latest_observation_date"] = benchmark_row.get("latest")
+                metadata["benchmark_latest_observation_date"] = benchmark_row.get(
+                    "latest"
+                )
 
                 cur.execute(
                     """
@@ -107,11 +117,15 @@ class SharedMarketRepository:
 
     def fetch_latest_trade_date(self) -> date | None:
         with postgres_connection(self.settings) as conn, conn.cursor() as cur:
-            cur.execute("SELECT MAX(trade_date) AS latest_trade_date FROM stg.stg_daily_prices")
+            cur.execute(
+                "SELECT MAX(trade_date) AS latest_trade_date FROM stg.stg_daily_prices"
+            )
             row = cur.fetchone() or {}
             return row.get("latest_trade_date")
 
-    def fetch_trade_dates(self, start_date: date, end_date: date, symbol: str = "SPY") -> list[date]:
+    def fetch_trade_dates(
+        self, start_date: date, end_date: date, symbol: str = "SPY"
+    ) -> list[date]:
         with postgres_connection(self.settings) as conn, conn.cursor() as cur:
             cur.execute(
                 """
@@ -167,3 +181,105 @@ class SharedMarketRepository:
         with postgres_connection(self.settings) as conn, conn.cursor() as cur:
             cur.execute(query, params)
             return list(cur.fetchall())
+
+    def fetch_security_metadata(
+        self, symbols: list[str], as_of_date: date
+    ) -> dict[str, dict[str, Any]]:
+        if not symbols:
+            return {}
+        with postgres_connection(self.settings) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT ON (symbol)
+                       symbol, stable_id_or_cik, exchange, security_type, sector, industry, market_cap,
+                       shares_outstanding, as_of_date, effective_as_of
+                FROM stg.stg_security_master
+                WHERE symbol = ANY(%(symbols)s)
+                  AND (as_of_date IS NULL OR as_of_date <= %(as_of_date)s)
+                ORDER BY symbol, as_of_date DESC NULLS LAST, effective_as_of DESC NULLS LAST
+                """,
+                {"symbols": symbols, "as_of_date": as_of_date},
+            )
+            return {row["symbol"]: dict(row) for row in cur.fetchall()}
+
+    def fetch_point_in_time_fundamentals(
+        self, symbols: list[str], as_of_date: date
+    ) -> dict[str, list[dict[str, Any]]]:
+        if not symbols:
+            return {}
+        with postgres_connection(self.settings) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH security AS (
+                    SELECT DISTINCT ON (symbol) symbol, stable_id_or_cik
+                    FROM stg.stg_security_master
+                    WHERE symbol = ANY(%(symbols)s)
+                      AND stable_id_or_cik IS NOT NULL
+                      AND (as_of_date IS NULL OR as_of_date <= %(as_of_date)s)
+                    ORDER BY symbol, as_of_date DESC NULLS LAST, effective_as_of DESC NULLS LAST
+                )
+                SELECT security.symbol, fundamentals.*
+                FROM security
+                JOIN stg.int_point_in_time_fundamentals fundamentals
+                  ON fundamentals.stable_id_or_cik = security.stable_id_or_cik
+                WHERE fundamentals.available_at::date <= %(as_of_date)s
+                ORDER BY security.symbol, fundamentals.period_end ASC, fundamentals.available_at ASC
+                """,
+                {"symbols": symbols, "as_of_date": as_of_date},
+            )
+            grouped: dict[str, list[dict[str, Any]]] = {
+                symbol: [] for symbol in symbols
+            }
+            for row in cur.fetchall():
+                row_dict = dict(row)
+                symbol = str(row_dict.pop("symbol"))
+                grouped.setdefault(symbol, []).append(row_dict)
+            return grouped
+
+    def fetch_filing_metadata(
+        self, symbols: list[str], as_of_date: date, limit_per_symbol: int = 12
+    ) -> dict[str, list[dict[str, Any]]]:
+        if not symbols:
+            return {}
+        with postgres_connection(self.settings) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH security AS (
+                    SELECT DISTINCT ON (symbol) symbol, stable_id_or_cik
+                    FROM stg.stg_security_master
+                    WHERE symbol = ANY(%(symbols)s)
+                      AND stable_id_or_cik IS NOT NULL
+                      AND (as_of_date IS NULL OR as_of_date <= %(as_of_date)s)
+                    ORDER BY symbol, as_of_date DESC NULLS LAST, effective_as_of DESC NULLS LAST
+                ),
+                ranked AS (
+                    SELECT security.symbol, filings.*,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY security.symbol
+                               ORDER BY filings.filing_date DESC NULLS LAST, filings.available_at DESC NULLS LAST
+                           ) AS rn
+                    FROM security
+                    JOIN stg.stg_filing_metadata filings
+                      ON filings.stable_id_or_cik = security.stable_id_or_cik
+                    WHERE filings.available_at::date <= %(as_of_date)s
+                )
+                SELECT *
+                FROM ranked
+                WHERE rn <= %(limit_per_symbol)s
+                ORDER BY symbol, filing_date ASC, available_at ASC
+                """,
+                {
+                    "symbols": symbols,
+                    "as_of_date": as_of_date,
+                    "limit_per_symbol": limit_per_symbol,
+                },
+            )
+            grouped: dict[str, list[dict[str, Any]]] = {
+                symbol: [] for symbol in symbols
+            }
+            for row in cur.fetchall():
+                row_dict = dict(row)
+                symbol = str(row_dict.pop("symbol"))
+                row_dict.pop("rn", None)
+                grouped.setdefault(symbol, []).append(row_dict)
+            return grouped

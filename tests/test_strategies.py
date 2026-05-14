@@ -2,7 +2,12 @@ from datetime import date
 
 from swing_trading_system.screening.features import ScreeningFeatures
 from swing_trading_system.screening.screener import ScreeningCandidate
-from swing_trading_system.strategies import BreakoutStrategy, PullbackStrategy, StrategyContext
+from swing_trading_system.strategies import (
+    BreakoutStrategy,
+    PullbackStrategy,
+    QualityMomentumStrategy,
+    StrategyContext,
+)
 
 
 def feature(**overrides):
@@ -34,11 +39,19 @@ def feature(**overrides):
 
 
 def candidate(features=None):
-    return ScreeningCandidate(symbol="AAA", score=0.8, passed=True, reason="passed", features=features or feature())
+    return ScreeningCandidate(
+        symbol="AAA",
+        score=0.8,
+        passed=True,
+        reason="passed",
+        features=features or feature(),
+    )
 
 
 def test_pullback_strategy_generates_signal_with_risk_fields() -> None:
-    signal = PullbackStrategy().generate(candidate(), StrategyContext(as_of_date=date(2026, 1, 1)))
+    signal = PullbackStrategy().generate(
+        candidate(), StrategyContext(as_of_date=date(2026, 1, 1))
+    )
 
     assert signal is not None
     assert signal.strategy == "pullback"
@@ -48,7 +61,10 @@ def test_pullback_strategy_generates_signal_with_risk_fields() -> None:
 
 
 def test_breakout_strategy_generates_signal_with_risk_fields() -> None:
-    signal = BreakoutStrategy().generate(candidate(feature(previous_high_20=99.0, volume_ratio_20d=1.6)), StrategyContext(as_of_date=date(2026, 1, 1)))
+    signal = BreakoutStrategy().generate(
+        candidate(feature(previous_high_20=99.0, volume_ratio_20d=1.6)),
+        StrategyContext(as_of_date=date(2026, 1, 1)),
+    )
 
     assert signal is not None
     assert signal.strategy == "breakout"
@@ -74,7 +90,67 @@ def test_breakout_strategy_uses_strong_breakout_target_and_volume_threshold() ->
 
 
 def test_strategies_reject_failed_candidate() -> None:
-    failed = ScreeningCandidate(symbol="AAA", score=0.1, passed=False, reason="bad", features=feature())
+    failed = ScreeningCandidate(
+        symbol="AAA", score=0.1, passed=False, reason="bad", features=feature()
+    )
 
-    assert PullbackStrategy().generate(failed, StrategyContext(as_of_date=date(2026, 1, 1))) is None
-    assert BreakoutStrategy().generate(failed, StrategyContext(as_of_date=date(2026, 1, 1))) is None
+    assert (
+        PullbackStrategy().generate(
+            failed, StrategyContext(as_of_date=date(2026, 1, 1))
+        )
+        is None
+    )
+    assert (
+        BreakoutStrategy().generate(
+            failed, StrategyContext(as_of_date=date(2026, 1, 1))
+        )
+        is None
+    )
+
+
+def test_strategies_reject_negative_relative_strength() -> None:
+    weak = candidate(feature(relative_strength_60d=-0.01))
+
+    assert (
+        PullbackStrategy().generate(weak, StrategyContext(as_of_date=date(2026, 1, 1)))
+        is None
+    )
+    assert (
+        BreakoutStrategy().generate(weak, StrategyContext(as_of_date=date(2026, 1, 1)))
+        is None
+    )
+
+
+def test_market_regime_halves_position_size_below_ma50() -> None:
+    normal = PullbackStrategy().generate(
+        candidate(), StrategyContext(as_of_date=date(2026, 1, 1))
+    )
+    defensive = PullbackStrategy().generate(
+        candidate(feature(benchmark_above_ma50=False, benchmark_return_20d=-0.02)),
+        StrategyContext(as_of_date=date(2026, 1, 1)),
+    )
+
+    assert normal is not None
+    assert defensive is not None
+    assert defensive.position_size == round(normal.position_size * 0.5, 4)
+    assert defensive.details["market_position_multiplier"] == 0.5
+
+
+def test_quality_momentum_strategy_generates_three_r_signal() -> None:
+    signal = QualityMomentumStrategy().generate(
+        candidate(
+            feature(
+                relative_strength_60d=0.20,
+                return_20d=0.08,
+                quality_score=0.75,
+                revenue_yoy=0.20,
+                net_income_yoy=0.15,
+                ocf_margin=0.12,
+            )
+        ),
+        StrategyContext(as_of_date=date(2026, 1, 1)),
+    )
+
+    assert signal is not None
+    assert signal.strategy == "quality_momentum"
+    assert signal.details["risk_multiple_target"] == 3.0
