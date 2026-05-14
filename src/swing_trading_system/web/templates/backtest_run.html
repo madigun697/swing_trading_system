@@ -43,6 +43,7 @@
           <option value="" {% if not form_values.strategy %}selected{% endif %}>전체</option>
           <option value="breakout" {% if form_values.strategy == "breakout" %}selected{% endif %}>Breakout</option>
           <option value="pullback" {% if form_values.strategy == "pullback" %}selected{% endif %}>Pullback</option>
+          <option value="quality_momentum" {% if form_values.strategy == "quality_momentum" %}selected{% endif %}>Quality Momentum</option>
         </select>
       </label>
       <label class="field">
