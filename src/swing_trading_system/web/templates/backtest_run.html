@@ -44,6 +44,9 @@
           <option value="breakout" {% if form_values.strategy == "breakout" %}selected{% endif %}>Breakout</option>
           <option value="pullback" {% if form_values.strategy == "pullback" %}selected{% endif %}>Pullback</option>
           <option value="quality_momentum" {% if form_values.strategy == "quality_momentum" %}selected{% endif %}>Quality Momentum</option>
+          <option value="breakout+pullback" {% if form_values.strategy == "breakout+pullback" %}selected{% endif %}>Breakout + Pullback</option>
+          <option value="breakout+quality_momentum" {% if form_values.strategy == "breakout+quality_momentum" %}selected{% endif %}>Breakout + Quality Momentum</option>
+          <option value="pullback+quality_momentum" {% if form_values.strategy == "pullback+quality_momentum" %}selected{% endif %}>Pullback + Quality Momentum</option>
         </select>
       </label>
       <label class="field">

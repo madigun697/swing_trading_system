@@ -122,7 +122,7 @@ uv run uvicorn swing_trading_system.web.app:app --host 0.0.0.0 --port 8401
 
 - 백테스트 결과를 저장한 뒤 상세 화면으로 이동
 
-`Strategy`를 비워두면 해당 기간의 전체 저장 signal을 사용한다.
+- `Strategy`를 비워두면 해당 기간의 전체 저장 signal을 사용한다. `breakout`, `pullback`, `quality_momentum` 단일 선택뿐만 아니라 `breakout+pullback` 처럼 두 개 이상의 전략 조합을 선택하여 동시에 백테스트를 실행할 수 있다.
 
 ## 5. CLI 운영 흐름
 

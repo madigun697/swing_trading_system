@@ -87,7 +87,7 @@ Web UI routes:
 - `/` dashboard
 - `/signals` recent signals
 - `/backtests` recent runs
-- `/backtests/run` run and save a backtest from the browser
+- `/backtests/run` run and save a backtest from the browser (supports selecting single or combined strategies like `breakout+pullback`)
 - `/backtests/{run_id}` detail page with:
   - strategy vs SPY chart
   - symbol contribution

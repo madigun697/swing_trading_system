@@ -39,8 +39,13 @@ class BacktestRepository:
             clauses.append("signal_date <= %(end_date)s")
             params["end_date"] = end_date
         if strategy:
-            clauses.append("strategy = %(strategy)s")
-            params["strategy"] = strategy
+            if "+" in strategy:
+                strategies = [s.strip() for s in strategy.split("+")]
+                clauses.append("strategy = ANY(%(strategies)s)")
+                params["strategies"] = strategies
+            else:
+                clauses.append("strategy = %(strategy)s")
+                params["strategy"] = strategy
         if symbols:
             clauses.append("symbol = ANY(%(symbols)s)")
             params["symbols"] = symbols
