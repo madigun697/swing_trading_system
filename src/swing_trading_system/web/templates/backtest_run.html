@@ -5,7 +5,7 @@
   <div>
     <p class="eyebrow">Backtest Runner</p>
     <h1>백테스트 실행</h1>
-    <p class="hero-copy">공격형 수익 프로필을 기본값으로 사용해 저장된 signal을 재평가하고, 결과를 저장한 뒤 상세 화면에서 SPY와 비교합니다.</p>
+    <p class="hero-copy">Market regime switching signal 세트를 기준으로 백테스트를 실행하고, 결과를 SPY와 함께 비교합니다. regime-aware signal은 `backfill-signals --force` 이후 데이터로 검증하는 것이 기준입니다.</p>
   </div>
   <div class="hero-actions"><a class="btn secondary" href="{{ url_for('backtests') }}">최근 결과</a></div>
 </section>
@@ -21,7 +21,7 @@
   <form method="post" action="{{ url_for('run_backtest_from_form') }}" class="panel-card run-form">
     <div class="panel-header">
       <h2>입력 설정</h2>
-      <span class="state-pill">aggressive_return</span>
+      <span class="state-pill">{{ regime_profile }}</span>
     </div>
     <div class="panel-body form-grid">
       <input type="hidden" name="risk_profile" value="{{ form_values.risk_profile }}">
@@ -40,14 +40,11 @@
       <label class="field">
         <span>Strategy</span>
         <select name="strategy">
-          <option value="" {% if not form_values.strategy %}selected{% endif %}>전체</option>
-          <option value="breakout" {% if form_values.strategy == "breakout" %}selected{% endif %}>Breakout</option>
-          <option value="pullback" {% if form_values.strategy == "pullback" %}selected{% endif %}>Pullback</option>
-          <option value="quality_momentum" {% if form_values.strategy == "quality_momentum" %}selected{% endif %}>Quality Momentum</option>
-          <option value="breakout+pullback" {% if form_values.strategy == "breakout+pullback" %}selected{% endif %}>Breakout + Pullback</option>
-          <option value="breakout+quality_momentum" {% if form_values.strategy == "breakout+quality_momentum" %}selected{% endif %}>Breakout + Quality Momentum</option>
-          <option value="pullback+quality_momentum" {% if form_values.strategy == "pullback+quality_momentum" %}selected{% endif %}>Pullback + Quality Momentum</option>
+          {% for option in strategy_options %}
+          <option value="{{ option.value }}" {% if form_values.strategy == option.value %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
         </select>
+        <small class="field-help">`Market Regime Switching`은 저장된 regime-aware signal 전체를 사용합니다. 개별 전략 조합과의 비교용으로 아래 옵션을 선택할 수 있습니다.</small>
       </label>
       <label class="field">
         <span>Symbols</span>
@@ -124,12 +121,14 @@
   </form>
 
   <aside class="panel-card">
-    <div class="panel-header"><h2>기본 프로필</h2><span class="state-pill">MDD ≤ 10%</span></div>
+    <div class="panel-header"><h2>Regime Profile</h2><span class="state-pill">{{ selected_strategy_label }}</span></div>
     <div class="panel-body metric-list">
-      <p><strong>목표</strong><span>MDD -10% 이내에서 수익률 우선</span></p>
-      <p><strong>기본 노출</strong><span>10 positions · 12.5% per name · 110% gross</span></p>
+      <p><strong>프로필</strong><span>{{ regime_profile }} · VIX {{ vix_benchmark_name }}</span></p>
+      <p><strong>레짐 동작</strong><span>R1/R2 공격, R3 축소, R4/R5 신규 진입 중단</span></p>
+      <p><strong>신호 전제</strong><span>run-daily 또는 backfill-signals에서 생성된 regime-aware signal 필요</span></p>
       <p><strong>벤치마크</strong><span>SPY return / MDD / CAGR 비교</span></p>
       <p><strong>청산</strong><span>목표가 50% 익절 후 10일선 trailing</span></p>
+      <p><strong>VIX 요구</strong><span>{% if require_vix %}필수{% else %}선택{% endif %}</span></p>
     </div>
   </aside>
 </section>

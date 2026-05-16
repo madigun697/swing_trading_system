@@ -90,6 +90,7 @@ def create_app(
             {
                 "active_page": "signals",
                 "signals": rows,
+                "display_signals": _display_signals(rows),
                 "ui_warnings": ui_warnings,
             },
         )
@@ -145,7 +146,7 @@ def create_app(
                 else None
             )
             symbols = _parse_symbols(str(form_values.get("symbols") or ""))
-            strategy = str(form_values.get("strategy") or "") or None
+            strategy = _selected_strategy_filter(form_values)
             repository = app.state.backtest_repository
             signals = repository.fetch_signals(
                 start_date=start_date,
@@ -279,6 +280,7 @@ def _build_report_summary(
         or metrics.get("rejection_count", 0),
         "symbol_contribution": metrics.get("symbol_contribution", {}),
         "strategy_contribution": metrics.get("strategy_contribution", {}),
+        "regime_slice_metrics": _slice_metrics(trades, _trade_market_regime),
         "exit_reasons": exit_reasons,
         "monthly_slice_metrics": _slice_metrics(
             trades, lambda trade: str(trade.get("entry_date"))[:7]
@@ -288,6 +290,12 @@ def _build_report_summary(
         "sector_slice_metrics": _slice_metrics(trades, _trade_sector),
         "duplicates": duplicates,
         "config": config,
+        "market_regime_enabled": any(
+            _trade_market_regime(trade) != "unknown" for trade in trades
+        ),
+        "market_regime_count": sum(
+            1 for trade in trades if _trade_market_regime(trade) != "unknown"
+        ),
         "chart": _build_equity_chart(equity_curve),
     }
 
@@ -344,13 +352,33 @@ def _trade_sector(trade: dict[str, object]) -> str:
     return str(features.get("sector") or "unknown")
 
 
+def _trade_market_regime(trade: dict[str, object]) -> str:
+    details = trade.get("details") if isinstance(trade.get("details"), dict) else {}
+    signal = details.get("signal") if isinstance(details.get("signal"), dict) else {}
+    signal_details = (
+        signal.get("details") if isinstance(signal.get("details"), dict) else {}
+    )
+    direct_regime = (
+        signal_details.get("market_regime")
+        if isinstance(signal_details.get("market_regime"), dict)
+        else {}
+    )
+    feature_regime = (
+        (signal_details.get("features") or {}).get("market_regime")
+        if isinstance(signal_details.get("features"), dict)
+        else {}
+    )
+    regime = direct_regime or feature_regime
+    return str(regime.get("regime_id") or "unknown")
+
+
 def _default_run_form(settings: Settings) -> dict[str, str]:
     aggressive_defaults = BacktestConfig()
     return {
-        "risk_profile": "aggressive_return",
+        "risk_profile": f"market_regime_{settings.swing_regime_profile}",
         "start_date": "2025-01-02",
         "end_date": "2026-05-01",
-        "strategy": "",
+        "strategy": "__market_regime__",
         "symbols": "",
         "initial_equity": str(settings.swing_account_equity),
         "fee_bps": str(settings.swing_fee_bps),
@@ -451,12 +479,109 @@ def _backtest_run_context(
         "form_values": form_values,
         "errors": errors or {},
         "ui_warnings": ui_warnings or [],
+        "strategy_options": _strategy_options(),
+        "selected_strategy_label": _strategy_option_label(
+            str(form_values.get("strategy") or "")
+        ),
+        "regime_profile": request.app.state.settings.swing_regime_profile,
+        "vix_benchmark_name": request.app.state.settings.swing_vix_benchmark_name,
+        "require_vix": request.app.state.settings.swing_require_vix,
     }
 
 
 def _parse_symbols(value: str) -> list[str] | None:
     symbols = [item.strip().upper() for item in value.split(",") if item.strip()]
     return symbols or None
+
+
+def _strategy_options() -> list[dict[str, str]]:
+    return [
+        {
+            "value": "__market_regime__",
+            "label": "Market Regime Switching",
+        },
+        {"value": "", "label": "전체 저장 signal"},
+        {"value": "breakout", "label": "Breakout"},
+        {"value": "pullback", "label": "Pullback"},
+        {"value": "quality_momentum", "label": "Quality Momentum"},
+        {"value": "breakout+pullback", "label": "Breakout + Pullback"},
+        {
+            "value": "breakout+quality_momentum",
+            "label": "Breakout + Quality Momentum",
+        },
+        {
+            "value": "pullback+quality_momentum",
+            "label": "Pullback + Quality Momentum",
+        },
+    ]
+
+
+def _strategy_option_label(value: str) -> str:
+    for option in _strategy_options():
+        if option["value"] == value:
+            return option["label"]
+    return "Custom"
+
+
+def _selected_strategy_filter(form_values: dict[str, str]) -> str | None:
+    strategy = str(form_values.get("strategy") or "")
+    if strategy == "__market_regime__":
+        return None
+    return strategy or None
+
+
+def _display_signals(signals: list[object]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for signal in signals:
+        details = (
+            getattr(signal, "details", None)
+            if hasattr(signal, "details")
+            else (signal.get("details") if isinstance(signal, dict) else {})
+        )
+        details = details if isinstance(details, dict) else {}
+        features = (
+            details.get("features") if isinstance(details.get("features"), dict) else {}
+        )
+        regime = (
+            details.get("market_regime")
+            if isinstance(details.get("market_regime"), dict)
+            else {}
+        ) or (
+            features.get("market_regime")
+            if isinstance(features.get("market_regime"), dict)
+            else {}
+        )
+        rows.append(
+            {
+                "id": getattr(signal, "id", None)
+                if hasattr(signal, "id")
+                else signal.get("id"),
+                "symbol": getattr(signal, "symbol", None)
+                if hasattr(signal, "symbol")
+                else signal.get("symbol"),
+                "strategy": getattr(signal, "strategy", None)
+                if hasattr(signal, "strategy")
+                else signal.get("strategy"),
+                "signal_date": getattr(signal, "signal_date", None)
+                if hasattr(signal, "signal_date")
+                else signal.get("signal_date"),
+                "entry_price": getattr(signal, "entry_price", None)
+                if hasattr(signal, "entry_price")
+                else signal.get("entry_price"),
+                "stop_price": getattr(signal, "stop_price", None)
+                if hasattr(signal, "stop_price")
+                else signal.get("stop_price"),
+                "target_price": getattr(signal, "target_price", None)
+                if hasattr(signal, "target_price")
+                else signal.get("target_price"),
+                "score": getattr(signal, "score", None)
+                if hasattr(signal, "score")
+                else signal.get("score"),
+                "regime_id": regime.get("regime_id") or "unknown",
+                "regime_reason": regime.get("reason") or "-",
+            }
+        )
+    return rows
 
 
 def _display_trades(trades: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -483,6 +608,7 @@ def _display_trades(trades: list[dict[str, object]]) -> list[dict[str, object]]:
                 "quantity": trade.get("quantity"),
                 "pnl": pnl,
                 "return_pct": return_pct,
+                "market_regime": _trade_market_regime(trade),
                 "exit_reason": details.get("exit_reason") or "unknown",
                 "legs": details.get("exit_legs") or [],
             }

@@ -63,7 +63,23 @@ class FakeBacktestRepository:
 
     def fetch_signals(self, limit=100, **kwargs):
         return [
-            BacktestSignal(1, "AAA", date(2026, 1, 1), "pullback", 100, 95, 110, 5, 10)
+            BacktestSignal(
+                1,
+                "AAA",
+                date(2026, 1, 1),
+                "pullback",
+                100,
+                95,
+                110,
+                5,
+                10,
+                details={
+                    "market_regime": {
+                        "regime_id": "R2_VOLATILE_BULL",
+                        "reason": "volatile_bull_above_ma200",
+                    }
+                },
+            )
         ]
 
     def fetch_prices_for_signals(
@@ -90,7 +106,29 @@ class FakeBacktestRepository:
 
     def fetch_run_trades(self, run_id):
         return [
-            {"run_id": run_id, "symbol": "AAA", "pnl": 10},
+            {
+                "run_id": run_id,
+                "symbol": "AAA",
+                "pnl": 10,
+                "details": {
+                    "signal": {
+                        "strategy": "pullback",
+                        "signal_date": date(2026, 1, 1),
+                        "entry_price": 100,
+                        "stop_price": 95,
+                        "target_price": 110,
+                        "details": {
+                            "market_regime": {
+                                "regime_id": "R2_VOLATILE_BULL",
+                                "reason": "volatile_bull_above_ma200",
+                            }
+                        },
+                    },
+                    "entry_notional": 1000,
+                    "strategy": "pullback",
+                    "exit_reason": "target",
+                },
+            },
             {"run_id": run_id, "symbol": "BAD", "pnl": "not-a-number"},
         ]
 
@@ -151,17 +189,21 @@ def test_index_signals_and_backtests_routes_render() -> None:
     assert "Signal count: 1" in c.get("/").text
     assert c.get("/signals").status_code == 200
     assert "AAA" in c.get("/signals").text
+    assert "R2_VOLATILE_BULL" in c.get("/signals").text
     assert c.get("/backtests").status_code == 200
     assert "r1" in c.get("/backtests").text
     detail = c.get("/backtests/r1")
     assert detail.status_code == 200
     assert "Strategy vs SPY" in detail.text
+    assert "Regime Slice" in detail.text
+    assert "regime-aware" in detail.text
     assert "Symbol Contribution" in detail.text
     assert "Monthly Slice" in detail.text
     assert "Sector Slice" in detail.text
     assert "Sharpe" in detail.text
     assert c.get("/backtests/run").status_code == 200
     assert "백테스트 실행" in c.get("/backtests/run").text
+    assert "Market Regime Switching" in c.get("/backtests/run").text
     assert c.get("/static/css/app.css").status_code == 200
 
 

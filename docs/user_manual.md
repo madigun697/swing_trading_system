@@ -25,6 +25,7 @@ uv run swing-system init-db
 
 - `ready`: 필수 shared relation 접근 가능
 - `missing_relation`: Quant shared table 누락
+- `missing_vix_benchmark`: `stg.stg_benchmark_series`에 `VIXCLS`가 아직 적재되지 않음
 - `database_unreachable`: DB 연결 문제
 
 ## 3. 시스템 구성 요약
@@ -78,11 +79,13 @@ uv run uvicorn swing_trading_system.web.app:app --host 0.0.0.0 --port 8401
 
 - 최근 시그널 목록
 - 전략명
+- regime id
 - signal date
 - entry / stop / target
 - score
 
 전략명은 현재 `pullback`, `breakout`, `quality_momentum`이 저장될 수 있다.
+regime column은 신규 market regime switching 로직이 해당 signal에 어떤 시장 국면을 붙였는지 보여준다.
 
 ### Backtests
 
@@ -122,7 +125,14 @@ uv run uvicorn swing_trading_system.web.app:app --host 0.0.0.0 --port 8401
 
 - 백테스트 결과를 저장한 뒤 상세 화면으로 이동
 
-- `Strategy`를 비워두면 해당 기간의 전체 저장 signal을 사용한다. `breakout`, `pullback`, `quality_momentum` 단일 선택뿐만 아니라 `breakout+pullback` 처럼 두 개 이상의 전략 조합을 선택하여 동시에 백테스트를 실행할 수 있다.
+- `Strategy`의 `Market Regime Switching` 옵션은 저장된 regime-aware signal 전체를 사용한다.
+- 개별 전략 비교가 필요하면 `breakout`, `pullback`, `quality_momentum` 또는 조합 옵션을 선택한다.
+- regime-aware backtest 비교 전에는 `backfill-signals --force` 또는 `run-daily`로 최신 signal을 다시 생성하는 것이 기준이다.
+- `VIXCLS` 데이터가 readiness에서 필수로 설정된 환경이라면 먼저 Quant repo에서 아래 명령으로 데이터를 적재해야 한다.
+
+```bash
+uv run python -m quant_data_platform.cli sync-fred --series VIXCLS
+```
 
 ## 5. CLI 운영 흐름
 
@@ -206,10 +216,22 @@ uv run swing-system run-backtest --start-date 2025-01-02 --end-date 2026-05-01
 
 ## 7. 시장 레짐 규칙
 
-- SPY가 MA50 아래이고 20일 수익률이 음수면 신규 signal size는 `0.5x`
-- SPY가 MA200 아래면 신규 signal은 생성하지 않음
+레짐은 SPY 추세와 `VIXCLS`를 함께 사용해 분류한다.
 
-이 규칙은 알파보다 시장 역풍이 강한 구간에서 손실 확산을 줄이기 위한 것이다.
+- `R1_STRONG_BULL`: `SPY > MA50 > MA200`, 20일 수익률 양수, `VIX <= 18`
+- `R2_VOLATILE_BULL`: `SPY > MA200`, `VIX < 30`
+- `R3_SIDEWAYS`: 위 조건 사이의 중립 구간
+- `R4_EARLY_BEAR`: `SPY < MA200`, 20일 수익률 약세, 또는 `VIX >= 30`
+- `R5_DEEP_BEAR`: `SPY < MA200`이면서 60일 낙폭이 깊거나 `VIX >= 40`
+
+기본 aggressive profile 동작:
+
+- `R1`: breakout 55%, quality momentum 45%, gross 110%
+- `R2`: pullback 45%, breakout 35%, quality momentum 20%, gross 110%
+- `R3`: pullback 60%, quality momentum 25%, breakout 15%, gross 60%
+- `R4`, `R5`: 신규 진입 중단
+
+기존 포지션은 Grace Period다. 즉, 레짐이 바뀌어도 이미 열린 포지션은 기존 stop/target/trailing/max-hold 규칙으로 종료한다.
 
 ## 8. 백테스트 결과 해석
 
@@ -227,6 +249,7 @@ uv run swing-system run-backtest --start-date 2025-01-02 --end-date 2026-05-01
 ### 상세 화면에서 꼭 볼 항목
 
 - `Strategy vs SPY`
+- `Regime Slice`
 - `Symbol Contribution`
 - `Strategy / Exit Summary`
 - `Monthly Slice`
@@ -237,6 +260,7 @@ uv run swing-system run-backtest --start-date 2025-01-02 --end-date 2026-05-01
 ### 해석 요령
 
 - 초과수익이 낮고 MDD가 양호하면 진입 품질 문제일 가능성이 크다.
+- `Regime Slice`에서 수익이 특정 레짐에만 집중되면, 해당 전략은 시장 국면 의존성이 높은 상태다.
 - 특정 symbol contribution 쏠림이 크면 전략 분산이 부족한 상태다.
 - `stop_loss` 손실이 과도하면 신호 품질 또는 레짐 필터가 약한 것이다.
 - `Monthly Slice`가 특정 구간에만 의존하면 지속성이 낮다.
@@ -265,7 +289,8 @@ uv run swing-system run-backtest --start-date 2025-01-02 --end-date 2026-05-01
 
 - readiness 확인
 - universe가 너무 좁지 않은지 확인
-- market regime 차단 상태인지 확인
+- market regime가 `R4` 또는 `R5`로 신규 진입 차단 상태인지 확인
+- `VIXCLS` readiness가 깨졌는지 확인
 - 최근 구간에서 RS / ATR / return 필터가 너무 엄격한지 확인
 
 ### Backtest 결과가 비어 있을 때
