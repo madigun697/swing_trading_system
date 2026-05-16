@@ -48,6 +48,7 @@ class ScreeningFeatures:
     benchmark_return_20d: float | None = None
     benchmark_above_ma50: bool | None = None
     benchmark_above_ma200: bool | None = None
+    market_regime: dict[str, Any] | None = None
     quality_score: float | None = None
     revenue_yoy: float | None = None
     net_income_yoy: float | None = None
@@ -66,6 +67,7 @@ def calculate_features(
     as_of_date: date,
     rows: list[dict[str, Any]] | tuple[dict[str, Any], ...],
     benchmark_rows: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
+    market_regime: dict[str, Any] | None = None,
     security_metadata: dict[str, Any] | None = None,
     fundamental_rows: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
     filing_rows: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
@@ -148,6 +150,7 @@ def calculate_features(
         benchmark_above_ma200=(benchmark_close > benchmark_ma200)
         if benchmark_close is not None and benchmark_ma200 is not None
         else None,
+        market_regime=market_regime,
         quality_score=quality["quality_score"],
         revenue_yoy=quality["revenue_yoy"],
         net_income_yoy=quality["net_income_yoy"],

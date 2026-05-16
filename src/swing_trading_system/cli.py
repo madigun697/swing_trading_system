@@ -13,6 +13,7 @@ from swing_trading_system.backtest.models import BacktestConfig
 from swing_trading_system.backtest.repository import BacktestRepository
 from swing_trading_system.config import Settings
 from swing_trading_system.db import check_database_connection, initialize_schema
+from swing_trading_system.market_regime import regime_policy_from_json
 from swing_trading_system.repositories.shared_market import SharedMarketRepository
 from swing_trading_system.repositories.swing_repository import SwingRepository
 from swing_trading_system.screening.input_loader import ScreeningInputLoader
@@ -354,11 +355,19 @@ def handle_run_daily(
             )
         ),
         strategies=(PullbackStrategy(), BreakoutStrategy(), QualityMomentumStrategy()),
+        regime_policy=regime_policy_from_json(
+            settings.swing_regime_policy_json,
+            require_vix=settings.swing_require_vix,
+            profile=settings.swing_regime_profile,
+        ),
+        vix_benchmark_name=settings.swing_vix_benchmark_name,
+        require_vix=settings.swing_require_vix,
     )
     result = pipeline.run_daily(
         symbols=list(universe.symbols),
         as_of_date=as_of_date,
         universe_name=universe.universe_name,
+        benchmark_symbol=settings.swing_benchmark_symbol,
         context=StrategyContext(
             as_of_date=as_of_date,
             risk_per_trade_pct=settings.swing_risk_per_trade_pct,

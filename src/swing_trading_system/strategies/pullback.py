@@ -32,7 +32,9 @@ class PullbackStrategy:
             or recent_high in (None, 0)
         ):
             return None
-        position_multiplier = market_position_multiplier(candidate)
+        position_multiplier = market_position_multiplier(
+            candidate, context=context, strategy=self.name
+        )
         if position_multiplier <= 0:
             return None
         pullback_pct = (recent_high - close) / recent_high
@@ -74,5 +76,6 @@ class PullbackStrategy:
                 "near_ma50": near_ma50,
                 "risk_multiple_target": risk_multiple_target,
                 "market_position_multiplier": position_multiplier,
+                "market_regime": feature.market_regime,
             },
         )

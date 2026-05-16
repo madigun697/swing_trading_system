@@ -7,6 +7,11 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Protocol, Sequence
 
+from swing_trading_system.market_regime import (
+    RegimePolicy,
+    classify_market_regime,
+    default_regime_policy,
+)
 from swing_trading_system.screening.features import calculate_features
 from swing_trading_system.screening.input_loader import ScreeningInputLoader
 from swing_trading_system.screening.screener import Screener
@@ -88,11 +93,19 @@ class ScreeningPipeline:
         repository: ScreeningPersistence,
         screener: Screener | None = None,
         strategies: Sequence[Strategy] = (),
+        regime_policy: RegimePolicy | None = None,
+        vix_benchmark_name: str = "VIXCLS",
+        require_vix: bool = False,
     ) -> None:
         self.input_loader = input_loader
         self.repository = repository
         self.screener = screener or Screener()
         self.strategies = tuple(strategies)
+        self.regime_policy = regime_policy or default_regime_policy(
+            require_vix=require_vix
+        )
+        self.vix_benchmark_name = vix_benchmark_name
+        self.require_vix = require_vix
 
     def run_daily(
         self,
@@ -104,17 +117,6 @@ class ScreeningPipeline:
         benchmark_symbol: str = "SPY",
         context: StrategyContext | None = None,
     ) -> ScreeningPipelineResult:
-        screening_run = self.repository.create_screening_run(
-            run_date=as_of_date,
-            universe_name=universe_name,
-            criteria={
-                "feature_set": feature_set,
-                "lookback_days": lookback_days,
-                "benchmark_symbol": benchmark_symbol,
-                "strategies": [strategy.name for strategy in self.strategies],
-            },
-        )
-        screening_run_id = int(screening_run["id"])
         inputs = self.input_loader.load_universe(
             symbols=symbols, as_of_date=as_of_date, lookback_days=lookback_days
         )
@@ -123,6 +125,39 @@ class ScreeningPipeline:
             as_of_date=as_of_date,
             lookback_days=lookback_days,
         )
+        load_benchmark_series = getattr(
+            self.input_loader, "load_benchmark_series", None
+        )
+        benchmark_series = (
+            load_benchmark_series(
+                benchmark_names=[self.vix_benchmark_name],
+                as_of_date=as_of_date,
+                lookback_days=lookback_days,
+            )
+            if load_benchmark_series is not None
+            else {}
+        )
+        market_regime = classify_market_regime(
+            benchmark_rows=list(benchmark_input.rows),
+            vix_rows=benchmark_series.get(self.vix_benchmark_name, ()),
+            as_of_date=as_of_date,
+            require_vix=self.require_vix,
+        )
+        market_regime_payload = market_regime.to_dict()
+        screening_run = self.repository.create_screening_run(
+            run_date=as_of_date,
+            universe_name=universe_name,
+            criteria={
+                "feature_set": feature_set,
+                "lookback_days": lookback_days,
+                "benchmark_symbol": benchmark_symbol,
+                "strategies": [strategy.name for strategy in self.strategies],
+                "market_regime": market_regime_payload,
+                "regime_policy_profile": self.regime_policy.profile,
+                "vix_benchmark_name": self.vix_benchmark_name,
+            },
+        )
+        screening_run_id = int(screening_run["id"])
         load_context = getattr(self.input_loader, "load_context", None)
         contexts = (
             load_context(symbols=symbols, as_of_date=as_of_date)
@@ -136,6 +171,7 @@ class ScreeningPipeline:
                 as_of_date=as_of_date,
                 rows=list(screening_input.rows),
                 benchmark_rows=list(benchmark_input.rows),
+                market_regime=market_regime_payload,
                 security_metadata=contexts.get(symbol, {}).get("security_metadata"),
                 fundamental_rows=contexts.get(symbol, {}).get("fundamentals", ()),
                 filing_rows=contexts.get(symbol, {}).get("filings", ()),
@@ -152,6 +188,7 @@ class ScreeningPipeline:
 
         candidates = self.screener.screen(features)
         strategy_context = context or StrategyContext(as_of_date=as_of_date)
+        strategy_context = strategy_context.with_regime_policy(self.regime_policy)
         signals: list[StrategySignal] = []
         for candidate in candidates:
             for strategy in self.strategies:

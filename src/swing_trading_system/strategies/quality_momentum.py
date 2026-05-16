@@ -45,7 +45,9 @@ class QualityMomentumStrategy:
             feature.ocf_margin is None or feature.ocf_margin <= 0
         ):
             return None
-        position_multiplier = market_position_multiplier(candidate)
+        position_multiplier = market_position_multiplier(
+            candidate, context=context, strategy=self.name
+        )
         if position_multiplier <= 0:
             return None
 
@@ -77,6 +79,7 @@ class QualityMomentumStrategy:
                 **candidate.to_signal_details(),
                 "risk_multiple_target": 3.0,
                 "market_position_multiplier": position_multiplier,
+                "market_regime": feature.market_regime,
                 "quality_score": feature.quality_score,
                 "revenue_yoy": feature.revenue_yoy,
                 "net_income_yoy": feature.net_income_yoy,

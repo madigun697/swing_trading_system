@@ -137,8 +137,9 @@ Screener는 유동성과 우호적인 setup에 초점을 둡니다.
 
 Market-regime sizing:
 
-- SPY가 MA50 아래이고 20일 수익률이 음수이면 신규 signal은 `0.5x` size 사용
-- SPY가 MA200 아래이면 신규 signal 차단
+- SPY MA50/MA200 추세와 FRED `VIXCLS`를 결합해 R1-R5 시장 국면을 산출
+- 기본 aggressive profile은 R1/R2에서 공격 노출, R3에서 축소 운용, R4/R5에서 신규 진입 중단
+- VIX 데이터는 Quant repo에서 `uv run python -m quant_data_platform.cli sync-fred --series VIXCLS`로 적재
 
 ## 백테스트 모델
 

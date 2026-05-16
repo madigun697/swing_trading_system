@@ -101,6 +101,17 @@ class HistoricalLoader:
     def load_universe(self, symbols, as_of_date, lookback_days=260):
         return {symbol: self.load_symbol(symbol, as_of_date, lookback_days) for symbol in symbols}
 
+    def load_benchmark_series(self, benchmark_names, as_of_date, lookback_days=260):
+        return {
+            benchmark_names[0]: [
+                {
+                    "benchmark_name": benchmark_names[0],
+                    "observation_date": as_of_date,
+                    "value": 16,
+                }
+            ]
+        }
+
 
 class FakeScreener:
     def screen(self, features):
@@ -135,5 +146,7 @@ def test_run_daily_calculates_features_and_saves_strategy_signal() -> None:
     assert result.candidate_count == 1
     assert result.signal_count == 1
     assert repo.features[0]["features"]["history_days"] == 221
+    assert repo.features[0]["features"]["market_regime"]["regime_id"] == "R1_STRONG_BULL"
+    assert repo.run["criteria"]["vix_benchmark_name"] == "VIXCLS"
     assert repo.signals[0]["entry_price"] == 100
     assert repo.completed[-1]["result_count"] == 1

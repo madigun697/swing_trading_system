@@ -32,7 +32,9 @@ class BreakoutStrategy:
             or previous_high in (None, 0)
         ):
             return None
-        position_multiplier = market_position_multiplier(candidate)
+        position_multiplier = market_position_multiplier(
+            candidate, context=context, strategy=self.name
+        )
         if position_multiplier <= 0:
             return None
         breakout_ratio = (close / previous_high) - 1.0
@@ -72,5 +74,6 @@ class BreakoutStrategy:
                 "required_volume_ratio_20d": required_volume_ratio,
                 "risk_multiple_target": risk_multiple_target,
                 "market_position_multiplier": position_multiplier,
+                "market_regime": feature.market_regime,
             },
         )

@@ -41,4 +41,7 @@ def test_aggressive_backtest_defaults() -> None:
     assert settings.swing_max_position_pct == 0.125
     assert settings.swing_max_gross_exposure_pct == 1.1
     assert settings.swing_benchmark_symbol == "SPY"
+    assert settings.swing_regime_profile == "aggressive"
+    assert settings.swing_require_vix is True
+    assert settings.swing_vix_benchmark_name == "VIXCLS"
     assert settings.swing_enable_trailing_stop is True

@@ -2,6 +2,7 @@ from datetime import date
 
 from swing_trading_system.screening.features import ScreeningFeatures
 from swing_trading_system.screening.screener import ScreeningCandidate
+from swing_trading_system.market_regime import MarketRegimeId, default_regime_policy
 from swing_trading_system.strategies import (
     BreakoutStrategy,
     PullbackStrategy,
@@ -134,6 +135,45 @@ def test_market_regime_halves_position_size_below_ma50() -> None:
     assert defensive is not None
     assert defensive.position_size == round(normal.position_size * 0.5, 4)
     assert defensive.details["market_position_multiplier"] == 0.5
+
+
+def test_regime_policy_scales_strategy_position_size() -> None:
+    normal = BreakoutStrategy().generate(
+        candidate(feature(previous_high_20=99.0, volume_ratio_20d=1.6)),
+        StrategyContext(as_of_date=date(2026, 1, 1)),
+    )
+    regime_scaled = BreakoutStrategy().generate(
+        candidate(
+            feature(
+                previous_high_20=99.0,
+                volume_ratio_20d=1.6,
+                market_regime={"regime_id": MarketRegimeId.R1_STRONG_BULL.value},
+            )
+        ),
+        StrategyContext(
+            as_of_date=date(2026, 1, 1),
+            regime_policy=default_regime_policy(require_vix=True),
+        ),
+    )
+
+    assert normal is not None
+    assert regime_scaled is not None
+    assert regime_scaled.position_size == round(normal.position_size * 0.605, 4)
+    assert regime_scaled.details["market_position_multiplier"] == 0.605
+
+
+def test_bear_regime_blocks_new_strategy_signal() -> None:
+    signal = PullbackStrategy().generate(
+        candidate(
+            feature(market_regime={"regime_id": MarketRegimeId.R4_EARLY_BEAR.value})
+        ),
+        StrategyContext(
+            as_of_date=date(2026, 1, 1),
+            regime_policy=default_regime_policy(require_vix=True),
+        ),
+    )
+
+    assert signal is None
 
 
 def test_quality_momentum_strategy_generates_three_r_signal() -> None:

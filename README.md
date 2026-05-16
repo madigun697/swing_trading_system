@@ -137,8 +137,9 @@ Strategy notes:
 
 Market-regime sizing:
 
-- SPY below MA50 and 20-day return negative: new signals use `0.5x` size
-- SPY below MA200: new signals are blocked
+- R1-R5 market regimes are classified from SPY MA50/MA200 trend plus FRED `VIXCLS`
+- The default aggressive profile keeps R1/R2 offensive, reduces R3 exposure, and blocks new R4/R5 entries
+- Load VIX data from the Quant repo with `uv run python -m quant_data_platform.cli sync-fred --series VIXCLS`
 
 ## Backtest Model
 

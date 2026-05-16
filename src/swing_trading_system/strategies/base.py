@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date
 from typing import Any, Protocol
 
+from swing_trading_system.market_regime import RegimePolicy
 from swing_trading_system.screening.screener import ScreeningCandidate
 
 
@@ -15,10 +16,14 @@ class StrategyContext:
     account_equity: float = 100_000.0
     risk_per_trade_pct: float = 0.01
     max_position_pct: float = 0.125
+    regime_policy: RegimePolicy | None = None
 
     @property
     def risk_amount(self) -> float:
         return self.account_equity * self.risk_per_trade_pct
+
+    def with_regime_policy(self, regime_policy: RegimePolicy) -> "StrategyContext":
+        return replace(self, regime_policy=regime_policy)
 
 
 @dataclass(frozen=True)
@@ -77,8 +82,18 @@ def calculate_position_size(
     return risk_per_share, max(0.0, min(risk_limited_size, value_limited_size))
 
 
-def market_position_multiplier(candidate: ScreeningCandidate) -> float:
+def market_position_multiplier(
+    candidate: ScreeningCandidate,
+    context: StrategyContext | None = None,
+    strategy: str | None = None,
+) -> float:
     feature = candidate.features
+    regime_payload = feature.market_regime or {}
+    regime_id = regime_payload.get("regime_id")
+    if context is not None and context.regime_policy is not None and strategy:
+        multiplier = context.regime_policy.position_multiplier(regime_id, strategy)
+        if multiplier is not None:
+            return multiplier
     if feature.benchmark_above_ma200 is False:
         return 0.0
     if (

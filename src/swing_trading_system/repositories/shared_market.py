@@ -60,6 +60,7 @@ class SharedMarketRepository:
 
     def check_readiness(self) -> ReadinessStatus:
         try:
+            settings = self.settings or Settings()
             metadata: dict[str, Any] = {}
             with postgres_connection(self.settings) as conn, conn.cursor() as cur:
                 missing = []
@@ -104,6 +105,31 @@ class SharedMarketRepository:
                 )
                 support_row = cur.fetchone() or {}
                 metadata["support_symbol_rows"] = support_row.get("row_count", 0)
+
+                cur.execute(
+                    """
+                    SELECT COUNT(*) AS row_count,
+                           MAX(observation_date)::text AS latest
+                    FROM stg.stg_benchmark_series
+                    WHERE benchmark_name = %(benchmark_name)s
+                    """,
+                    {"benchmark_name": settings.swing_vix_benchmark_name},
+                )
+                vix_row = cur.fetchone() or {}
+                metadata["vix_benchmark_name"] = settings.swing_vix_benchmark_name
+                metadata["vix_rows"] = vix_row.get("row_count", 0)
+                metadata["vix_latest_observation_date"] = vix_row.get("latest")
+                if settings.swing_require_vix and not vix_row.get("row_count", 0):
+                    return ReadinessStatus(
+                        ok=False,
+                        code="missing_vix_benchmark",
+                        detail=(
+                            "Missing required VIX benchmark series: "
+                            f"{settings.swing_vix_benchmark_name}"
+                        ),
+                        checked_relations=REQUIRED_RELATIONS,
+                        metadata=metadata,
+                    )
 
             return ReadinessStatus(
                 ok=True,
@@ -181,6 +207,43 @@ class SharedMarketRepository:
         with postgres_connection(self.settings) as conn, conn.cursor() as cur:
             cur.execute(query, params)
             return list(cur.fetchall())
+
+    def fetch_benchmark_series(
+        self,
+        benchmark_names: list[str],
+        start_date: date | None = None,
+        end_date: date | None = None,
+        limit: int = 2_000,
+    ) -> dict[str, list[dict[str, Any]]]:
+        if not benchmark_names:
+            return {}
+        clauses = ["benchmark_name = ANY(%(benchmark_names)s)"]
+        params: dict[str, Any] = {
+            "benchmark_names": benchmark_names,
+            "limit": limit,
+        }
+        if start_date is not None:
+            clauses.append("observation_date >= %(start_date)s")
+            params["start_date"] = start_date
+        if end_date is not None:
+            clauses.append("observation_date <= %(end_date)s")
+            params["end_date"] = end_date
+        where = " AND ".join(clauses)
+        query = f"""
+            SELECT benchmark_name, observation_date, value, source
+            FROM stg.stg_benchmark_series
+            WHERE {where}
+            ORDER BY observation_date ASC, benchmark_name ASC
+            LIMIT %(limit)s
+        """
+        grouped: dict[str, list[dict[str, Any]]] = {
+            benchmark_name: [] for benchmark_name in benchmark_names
+        }
+        with postgres_connection(self.settings) as conn, conn.cursor() as cur:
+            cur.execute(query, params)
+            for row in cur.fetchall():
+                grouped.setdefault(str(row["benchmark_name"]), []).append(dict(row))
+        return grouped
 
     def fetch_security_metadata(
         self, symbols: list[str], as_of_date: date

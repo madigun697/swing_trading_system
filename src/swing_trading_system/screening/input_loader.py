@@ -74,6 +74,24 @@ class ScreeningInputLoader:
             for symbol in symbols
         }
 
+    def load_benchmark_series(
+        self,
+        benchmark_names: list[str],
+        as_of_date: date,
+        lookback_days: int = 365,
+    ) -> dict[str, list[dict[str, Any]]]:
+        fetch_benchmark_series = getattr(
+            self.market_repository, "fetch_benchmark_series", None
+        )
+        if fetch_benchmark_series is None or not benchmark_names:
+            return {}
+        start_date = as_of_date - timedelta(days=max(lookback_days * 2, 365))
+        return fetch_benchmark_series(
+            benchmark_names=benchmark_names,
+            start_date=start_date,
+            end_date=as_of_date,
+        )
+
     def load_context(
         self, symbols: list[str], as_of_date: date
     ) -> dict[str, dict[str, Any]]:
