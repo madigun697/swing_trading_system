@@ -358,15 +358,11 @@ def _trade_market_regime(trade: dict[str, object]) -> str:
     signal_details = (
         signal.get("details") if isinstance(signal.get("details"), dict) else {}
     )
-    direct_regime = (
-        signal_details.get("market_regime")
-        if isinstance(signal_details.get("market_regime"), dict)
-        else {}
-    )
-    feature_regime = (
+    direct_regime = _regime_payload(signal_details.get("market_regime"))
+    feature_regime = _regime_payload(
         (signal_details.get("features") or {}).get("market_regime")
         if isinstance(signal_details.get("features"), dict)
-        else {}
+        else None
     )
     regime = direct_regime or feature_regime
     return str(regime.get("regime_id") or "unknown")
@@ -530,6 +526,10 @@ def _selected_strategy_filter(form_values: dict[str, str]) -> str | None:
     return strategy or None
 
 
+def _regime_payload(value: object) -> dict[str, object]:
+    return value if isinstance(value, dict) else {}
+
+
 def _display_signals(signals: list[object]) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for signal in signals:
@@ -542,14 +542,8 @@ def _display_signals(signals: list[object]) -> list[dict[str, object]]:
         features = (
             details.get("features") if isinstance(details.get("features"), dict) else {}
         )
-        regime = (
-            details.get("market_regime")
-            if isinstance(details.get("market_regime"), dict)
-            else {}
-        ) or (
+        regime = _regime_payload(details.get("market_regime")) or _regime_payload(
             features.get("market_regime")
-            if isinstance(features.get("market_regime"), dict)
-            else {}
         )
         rows.append(
             {

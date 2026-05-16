@@ -129,7 +129,20 @@ class FakeBacktestRepository:
                     "exit_reason": "target",
                 },
             },
-            {"run_id": run_id, "symbol": "BAD", "pnl": "not-a-number"},
+            {
+                "run_id": run_id,
+                "symbol": "BAD",
+                "pnl": "not-a-number",
+                "details": {
+                    "signal": {
+                        "strategy": "breakout",
+                        "details": {
+                            "market_regime": None,
+                            "features": {"market_regime": None},
+                        },
+                    }
+                },
+            },
         ]
 
     def fetch_run_equity_curve(self, run_id):
