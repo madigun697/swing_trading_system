@@ -35,6 +35,10 @@ def create_app(
     app.state.backtest_repository = backtest_repository or BacktestRepository()
     app.state.settings = Settings()
 
+    from swing_trading_system.logger import setup_logger
+    logger = setup_logger(__name__)
+    logger.info("Swing Trading System web application starting up")
+
     @app.get("/healthz")
     async def healthz() -> JSONResponse:
         readiness = app.state.shared_market_repository.check_readiness()

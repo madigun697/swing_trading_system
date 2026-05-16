@@ -482,6 +482,10 @@ def run(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     settings = Settings()
+    from swing_trading_system.logger import setup_logger
+    logger = setup_logger(__name__)
+
+    logger.info(f"Running command: {args.command}")
 
     if args.command == "check-connection":
         code, payload = handle_check_connection(settings)
