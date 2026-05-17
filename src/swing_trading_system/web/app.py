@@ -36,6 +36,7 @@ def create_app(
     app.state.settings = Settings()
 
     from swing_trading_system.logger import setup_logger
+
     logger = setup_logger(__name__)
     logger.info("Swing Trading System web application starting up")
 
@@ -151,12 +152,15 @@ def create_app(
             )
             symbols = _parse_symbols(str(form_values.get("symbols") or ""))
             strategy = _selected_strategy_filter(form_values)
+            require_market_regime = _is_market_regime_selection(form_values)
             repository = app.state.backtest_repository
             signals = repository.fetch_signals(
                 start_date=start_date,
                 end_date=end_date,
                 strategy=strategy,
                 symbols=symbols,
+                limit=None,
+                require_market_regime=require_market_regime,
             )
             prices = repository.fetch_prices_for_signals(
                 signals,
@@ -196,6 +200,12 @@ def create_app(
             summary = app.state.backtest_repository.fetch_run_summary(run_id)
         except Exception as exc:
             ui_warnings.append(f"backtest detail unavailable: {type(exc).__name__}")
+        try:
+            trades = _enrich_trade_sectors(
+                trades, app.state.shared_market_repository
+            )
+        except Exception as exc:
+            ui_warnings.append(f"sector metadata unavailable: {type(exc).__name__}")
         total_pnl = (
             _safe_float(summary.get("total_pnl"))
             if summary
@@ -353,7 +363,7 @@ def _trade_sector(trade: dict[str, object]) -> str:
         if isinstance(signal_details.get("features"), dict)
         else {}
     )
-    return str(features.get("sector") or "unknown")
+    return str(features.get("sector") or details.get("ui_sector") or "unknown")
 
 
 def _trade_market_regime(trade: dict[str, object]) -> str:
@@ -370,6 +380,57 @@ def _trade_market_regime(trade: dict[str, object]) -> str:
     )
     regime = direct_regime or feature_regime
     return str(regime.get("regime_id") or "unknown")
+
+
+def _trade_signal_date(trade: dict[str, object]) -> date | None:
+    details = trade.get("details") if isinstance(trade.get("details"), dict) else {}
+    signal = details.get("signal") if isinstance(details.get("signal"), dict) else {}
+    return _coerce_date(signal.get("signal_date"))
+
+
+def _enrich_trade_sectors(
+    trades: list[dict[str, object]], repository: object
+) -> list[dict[str, object]]:
+    fetch_sector = getattr(repository, "fetch_sector_by_symbol_and_date", None)
+    if fetch_sector is None or not trades:
+        return trades
+    requests: list[tuple[str, date]] = []
+    for trade in trades:
+        if _trade_sector(trade) != "unknown":
+            continue
+        symbol = trade.get("symbol")
+        signal_date = _trade_signal_date(trade)
+        if isinstance(symbol, str) and signal_date is not None:
+            requests.append((symbol, signal_date))
+    if not requests:
+        return trades
+    sector_by_trade = fetch_sector(list(dict.fromkeys(requests)))
+    enriched_trades: list[dict[str, object]] = []
+    for trade in trades:
+        if _trade_sector(trade) != "unknown":
+            enriched_trades.append(trade)
+            continue
+        symbol = trade.get("symbol")
+        signal_date = _trade_signal_date(trade)
+        sector = (
+            sector_by_trade.get((symbol, signal_date))
+            if isinstance(symbol, str) and signal_date is not None
+            else None
+        )
+        if not sector:
+            enriched_trades.append(trade)
+            continue
+        details = trade.get("details") if isinstance(trade.get("details"), dict) else {}
+        enriched_trades.append(
+            {
+                **trade,
+                "details": {
+                    **details,
+                    "ui_sector": sector,
+                },
+            }
+        )
+    return enriched_trades
 
 
 def _default_run_form(settings: Settings) -> dict[str, str]:
@@ -528,6 +589,10 @@ def _selected_strategy_filter(form_values: dict[str, str]) -> str | None:
     if strategy == "__market_regime__":
         return None
     return strategy or None
+
+
+def _is_market_regime_selection(form_values: dict[str, str]) -> bool:
+    return str(form_values.get("strategy") or "") == "__market_regime__"
 
 
 def _regime_payload(value: object) -> dict[str, object]:

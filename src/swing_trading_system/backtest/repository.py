@@ -7,7 +7,11 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from swing_trading_system.backtest.models import BacktestResult, BacktestSignal, PriceBar
+from swing_trading_system.backtest.models import (
+    BacktestResult,
+    BacktestSignal,
+    PriceBar,
+)
 from swing_trading_system.config import Settings
 from swing_trading_system.storage import postgres_connection
 
@@ -22,7 +26,8 @@ class BacktestRepository:
         end_date: date | None = None,
         strategy: str | None = None,
         symbols: list[str] | None = None,
-        limit: int = 500,
+        limit: int | None = 500,
+        require_market_regime: bool = False,
     ) -> list[BacktestSignal]:
         clauses = [
             "entry_price IS NOT NULL",
@@ -49,21 +54,39 @@ class BacktestRepository:
         if symbols:
             clauses.append("symbol = ANY(%(symbols)s)")
             params["symbols"] = symbols
+        if require_market_regime:
+            clauses.append(
+                """
+                COALESCE(
+                    details->'market_regime'->>'regime_id',
+                    details->'features'->'market_regime'->>'regime_id'
+                ) IS NOT NULL
+                """
+            )
         where = " AND ".join(clauses)
+        limit_sql = "LIMIT %(limit)s" if limit is not None else ""
         query = f"""
             SELECT *
             FROM swing_meta.signal
             WHERE {where}
             ORDER BY signal_date ASC, id ASC
-            LIMIT %(limit)s
+            {limit_sql}
         """
         with postgres_connection(self.settings) as conn, conn.cursor() as cur:
             cur.execute(query, params)
             signals = [BacktestSignal.from_row(row) for row in cur.fetchall()]
             return [signal for signal in signals if signal is not None]
 
-    def fetch_price_bars(self, symbol: str, start_date: date, end_date: date | None = None, max_hold_days: int = 20) -> list[PriceBar]:
-        effective_end = end_date or (start_date + timedelta(days=max_hold_days * 3 + 15))
+    def fetch_price_bars(
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date | None = None,
+        max_hold_days: int = 20,
+    ) -> list[PriceBar]:
+        effective_end = end_date or (
+            start_date + timedelta(days=max_hold_days * 3 + 15)
+        )
         with postgres_connection(self.settings) as conn, conn.cursor() as cur:
             cur.execute(
                 """
@@ -89,10 +112,14 @@ class BacktestRepository:
         prices: dict[str, list[PriceBar]] = {}
         signal_dates_by_symbol: dict[str, list[date]] = {}
         for signal in signals:
-            signal_dates_by_symbol.setdefault(signal.symbol, []).append(signal.signal_date)
+            signal_dates_by_symbol.setdefault(signal.symbol, []).append(
+                signal.signal_date
+            )
         for symbol, signal_dates in signal_dates_by_symbol.items():
             start_date = min(signal_dates)
-            effective_end = end_date or (max(signal_dates) + timedelta(days=max_hold_days * 3 + 15))
+            effective_end = end_date or (
+                max(signal_dates) + timedelta(days=max_hold_days * 3 + 15)
+            )
             prices[symbol] = self.fetch_price_bars(
                 symbol=symbol,
                 start_date=start_date,
@@ -100,9 +127,15 @@ class BacktestRepository:
                 max_hold_days=max_hold_days,
             )
         if benchmark_symbol and signal_dates_by_symbol:
-            all_signal_dates = [signal_date for signal_dates in signal_dates_by_symbol.values() for signal_date in signal_dates]
+            all_signal_dates = [
+                signal_date
+                for signal_dates in signal_dates_by_symbol.values()
+                for signal_date in signal_dates
+            ]
             start_date = min(all_signal_dates)
-            effective_end = end_date or (max(all_signal_dates) + timedelta(days=max_hold_days * 3 + 15))
+            effective_end = end_date or (
+                max(all_signal_dates) + timedelta(days=max_hold_days * 3 + 15)
+            )
             prices[benchmark_symbol] = self.fetch_price_bars(
                 symbol=benchmark_symbol,
                 start_date=start_date,
@@ -115,9 +148,18 @@ class BacktestRepository:
         with postgres_connection(self.settings) as conn:
             with conn.transaction():
                 with conn.cursor() as cur:
-                    cur.execute("DELETE FROM swing_mart.backtest_trade_log WHERE run_id = %(run_id)s", {"run_id": result.run_id})
-                    cur.execute("DELETE FROM swing_mart.backtest_equity_curve WHERE run_id = %(run_id)s", {"run_id": result.run_id})
-                    cur.execute("DELETE FROM swing_mart.backtest_run_summary WHERE run_id = %(run_id)s", {"run_id": result.run_id})
+                    cur.execute(
+                        "DELETE FROM swing_mart.backtest_trade_log WHERE run_id = %(run_id)s",
+                        {"run_id": result.run_id},
+                    )
+                    cur.execute(
+                        "DELETE FROM swing_mart.backtest_equity_curve WHERE run_id = %(run_id)s",
+                        {"run_id": result.run_id},
+                    )
+                    cur.execute(
+                        "DELETE FROM swing_mart.backtest_run_summary WHERE run_id = %(run_id)s",
+                        {"run_id": result.run_id},
+                    )
                     for trade in result.trades:
                         cur.execute(
                             """
@@ -137,7 +179,13 @@ class BacktestRepository:
                                 "exit_price": trade.exit_price,
                                 "quantity": trade.quantity,
                                 "pnl": trade.pnl,
-                                "details": Jsonb({**trade.details, "exit_reason": trade.exit_reason, "strategy": trade.strategy}),
+                                "details": Jsonb(
+                                    {
+                                        **trade.details,
+                                        "exit_reason": trade.exit_reason,
+                                        "strategy": trade.strategy,
+                                    }
+                                ),
                             },
                         )
                     for point in result.equity_curve:
@@ -153,7 +201,13 @@ class BacktestRepository:
                                 "equity_date": point.equity_date,
                                 "equity": point.equity,
                                 "drawdown": point.drawdown,
-                                "details": Jsonb({**point.details, "metrics": result.metrics, "config": result.config.to_dict()}),
+                                "details": Jsonb(
+                                    {
+                                        **point.details,
+                                        "metrics": result.metrics,
+                                        "config": result.config.to_dict(),
+                                    }
+                                ),
                             },
                         )
                     cur.execute(
@@ -221,23 +275,36 @@ class BacktestRepository:
 
     def fetch_run_summary(self, run_id: str) -> dict[str, Any]:
         with postgres_connection(self.settings) as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM swing_mart.backtest_run_summary WHERE run_id = %(run_id)s", {"run_id": run_id})
+            cur.execute(
+                "SELECT * FROM swing_mart.backtest_run_summary WHERE run_id = %(run_id)s",
+                {"run_id": run_id},
+            )
             row = cur.fetchone()
             if row:
                 return dict(row)
             trades = self.fetch_run_trades(run_id)
             equity = self.fetch_run_equity_curve(run_id)
-            metrics = (equity[-1].get("details") or {}).get("metrics", {}) if equity else {}
-            config = (equity[-1].get("details") or {}).get("config", {}) if equity else {}
+            metrics = (
+                (equity[-1].get("details") or {}).get("metrics", {}) if equity else {}
+            )
+            config = (
+                (equity[-1].get("details") or {}).get("config", {}) if equity else {}
+            )
             return {
                 "run_id": run_id,
-                "start_date": min((trade.get("entry_date") for trade in trades), default=None),
-                "end_date": max((trade.get("exit_date") for trade in trades), default=None),
+                "start_date": min(
+                    (trade.get("entry_date") for trade in trades), default=None
+                ),
+                "end_date": max(
+                    (trade.get("exit_date") for trade in trades), default=None
+                ),
                 "signal_start_date": metrics.get("signal_start_date"),
                 "signal_end_date": metrics.get("signal_end_date"),
                 "initial_equity": config.get("initial_equity"),
                 "final_equity": equity[-1].get("equity") if equity else None,
-                "total_pnl": metrics.get("total_pnl", sum(_safe_float(trade.get("pnl")) for trade in trades)),
+                "total_pnl": metrics.get(
+                    "total_pnl", sum(_safe_float(trade.get("pnl")) for trade in trades)
+                ),
                 "total_return": metrics.get("total_return"),
                 "max_drawdown": metrics.get("max_drawdown"),
                 "win_rate": metrics.get("win_rate"),
@@ -272,7 +339,11 @@ class BacktestRepository:
 def _summary_params(result: BacktestResult) -> dict[str, Any]:
     start_date = min((trade.entry_date for trade in result.trades), default=None)
     end_date = max((trade.exit_date for trade in result.trades), default=None)
-    final_equity = result.equity_curve[-1].equity if result.equity_curve else result.config.initial_equity
+    final_equity = (
+        result.equity_curve[-1].equity
+        if result.equity_curve
+        else result.config.initial_equity
+    )
     return {
         "run_id": result.run_id,
         "start_date": start_date,

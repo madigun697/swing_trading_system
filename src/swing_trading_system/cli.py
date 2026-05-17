@@ -98,7 +98,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_backtest.add_argument("--start-date", help="Signal start date YYYY-MM-DD")
     run_backtest.add_argument("--end-date", help="Signal end date YYYY-MM-DD")
-    run_backtest.add_argument("--strategy", help="Strategy filter")
+    run_backtest.add_argument(
+        "--strategy",
+        help="Strategy filter; use market_regime for regime-aware switching signals",
+    )
     run_backtest.add_argument("--symbols", help="Comma-separated symbols")
     run_backtest.add_argument("--initial-equity", type=float, default=None)
     run_backtest.add_argument("--fee-bps", type=float, default=None)
@@ -288,11 +291,15 @@ def handle_run_backtest(
     start_date = date.fromisoformat(args.start_date) if args.start_date else None
     end_date = date.fromisoformat(args.end_date) if args.end_date else None
     symbols = _parse_symbols(args.symbols)
+    require_market_regime = _is_market_regime_strategy(args.strategy)
+    strategy = None if require_market_regime else args.strategy
     signals = repository.fetch_signals(
         start_date=start_date,
         end_date=end_date,
-        strategy=args.strategy,
+        strategy=strategy,
         symbols=symbols,
+        limit=None,
+        require_market_regime=require_market_regime,
     )
     prices = repository.fetch_prices_for_signals(
         signals,
@@ -312,6 +319,7 @@ def handle_run_backtest(
             "ok": True,
             "dry_run": args.dry_run,
             "run_id": result.run_id,
+            "market_regime_required": require_market_regime,
             "signal_count": len(signals),
             "signal_start_date": result.signal_start_date,
             "signal_end_date": result.signal_end_date,
@@ -327,6 +335,14 @@ def handle_run_backtest(
             **saved,
         },
     )
+
+
+def _is_market_regime_strategy(strategy: str | None) -> bool:
+    return (strategy or "").strip().lower() in {
+        "__market_regime__",
+        "market_regime",
+        "market-regime",
+    }
 
 
 def handle_run_daily(
@@ -483,6 +499,7 @@ def run(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     settings = Settings()
     from swing_trading_system.logger import setup_logger
+
     logger = setup_logger(__name__)
 
     logger.info(f"Running command: {args.command}")
