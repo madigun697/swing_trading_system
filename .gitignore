@@ -25,6 +25,7 @@ dbt/.user.yml
 
 # Local data volumes
 .data/
+.run/
 backtest_results/
 
 # Backup files

@@ -89,6 +89,18 @@ uv run swing-system init-db
 uv run uvicorn swing_trading_system.web.app:app --host 0.0.0.0 --port 8401
 ```
 
+웹 UI 백그라운드 실행:
+
+```bash
+chmod +x infra/web/serverctl.sh
+infra/web/serverctl.sh start
+infra/web/serverctl.sh status
+infra/web/serverctl.sh logs
+infra/web/serverctl.sh stop
+```
+
+헬퍼 스크립트는 PID와 로그를 `.run/` 아래에 저장합니다.
+
 Health check:
 
 ```bash
