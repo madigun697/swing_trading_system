@@ -265,6 +265,46 @@ class SharedMarketRepository:
             )
             return {row["symbol"]: dict(row) for row in cur.fetchall()}
 
+    def fetch_sector_by_symbol_and_date(
+        self, requests: list[tuple[str, date]]
+    ) -> dict[tuple[str, date], str]:
+        if not requests:
+            return {}
+        symbols = list(dict.fromkeys(symbol for symbol, _ in requests))
+        with postgres_connection(self.settings) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT symbol, sector, as_of_date, effective_as_of
+                FROM stg.stg_security_master
+                WHERE symbol = ANY(%(symbols)s)
+                  AND sector IS NOT NULL
+                ORDER BY symbol ASC,
+                         as_of_date DESC NULLS LAST,
+                         effective_as_of DESC NULLS LAST
+                """,
+                {"symbols": symbols},
+            )
+            metadata_rows = list(cur.fetchall())
+        metadata_by_symbol: dict[str, list[dict[str, Any]]] = {}
+        for row in metadata_rows:
+            metadata_by_symbol.setdefault(str(row["symbol"]), []).append(dict(row))
+        resolved: dict[tuple[str, date], str] = {}
+        for symbol, as_of_date in requests:
+            rows = metadata_by_symbol.get(symbol, [])
+            if not rows:
+                continue
+            selected_sector = None
+            for row in rows:
+                row_as_of_date = row.get("as_of_date")
+                if row_as_of_date is None or row_as_of_date <= as_of_date:
+                    selected_sector = row.get("sector")
+                    break
+            if not selected_sector:
+                selected_sector = rows[0].get("sector")
+            if selected_sector:
+                resolved[(symbol, as_of_date)] = str(selected_sector)
+        return resolved
+
     def fetch_point_in_time_fundamentals(
         self, symbols: list[str], as_of_date: date
     ) -> dict[str, list[dict[str, Any]]]:

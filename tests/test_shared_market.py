@@ -26,3 +26,12 @@ def test_fetch_benchmark_series_uses_shared_contract() -> None:
     assert "FROM stg.stg_benchmark_series" in source
     assert "benchmark_name" in source
     assert "observation_date" in source
+
+
+def test_fetch_sector_by_symbol_and_date_uses_shared_contract() -> None:
+    source = inspect.getsource(SharedMarketRepository.fetch_sector_by_symbol_and_date)
+
+    assert "FROM stg.stg_security_master" in source
+    assert "symbol = ANY" in source
+    assert "sector IS NOT NULL" in source
+    assert "effective_as_of DESC NULLS LAST" in source

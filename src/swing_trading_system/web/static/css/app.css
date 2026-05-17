@@ -64,6 +64,25 @@ h3 { margin: 0 0 10px; font-size: 14px; }
 .panel-header { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; align-items: center; background: var(--panel-soft); }
 .panel-header h2 { margin: 0; font-size: 16px; }
 .panel-body { padding: 16px; }
+.collapsible-panel > .collapsible-summary { cursor: pointer; list-style: none; }
+.collapsible-panel > .collapsible-summary::-webkit-details-marker { display: none; }
+.collapsible-panel > .collapsible-summary::marker { content: ""; }
+.collapsible-panel:not([open]) > .collapsible-summary { border-bottom: 0; }
+.summary-actions { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+.collapse-indicator {
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+.collapsible-panel[open] .collapse-indicator { transform: rotate(225deg); }
+.collapsible-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 
 .status-badge, .state-pill { display: inline-flex; align-items: center; padding: 5px 8px; border-radius: 8px; font-weight: 800; font-size: 12px; }
 .status-badge.ok { background: rgba(18,128,92,.12); color: var(--good); }

@@ -73,24 +73,24 @@
 </section>
 
 <section class="detail-grid">
-  <article class="panel-card">
-    <div class="panel-header"><h2>Regime Slice</h2></div>
+  <details class="panel-card collapsible-panel">
+    <summary class="panel-header collapsible-summary"><h2>Regime Slice</h2><span class="collapse-indicator" aria-hidden="true"></span></summary>
     <div class="table-wrap">
       <table><thead><tr><th>Regime</th><th class="numeric">Trades</th><th class="numeric">PnL</th><th class="numeric">Win Rate</th><th class="numeric">Avg PnL</th></tr></thead><tbody>
       {% for row in report_summary.regime_slice_metrics %}<tr><td>{{ row.name }}</td><td class="numeric">{{ row.trade_count }}</td><td class="numeric {{ 'positive' if row.total_pnl > 0 else 'negative' }}">{{ "%.2f"|format(row.total_pnl) }}</td><td class="numeric">{{ "%.2f%%"|format(row.win_rate * 100) }}</td><td class="numeric">{{ "%.2f"|format(row.average_pnl) }}</td></tr>{% endfor %}
       </tbody></table>
     </div>
-  </article>
-  <article class="panel-card">
-    <div class="panel-header"><h2>Symbol Contribution</h2></div>
+  </details>
+  <details class="panel-card collapsible-panel">
+    <summary class="panel-header collapsible-summary"><h2>Symbol Contribution</h2><span class="collapse-indicator" aria-hidden="true"></span></summary>
     <div class="table-wrap">
       <table><thead><tr><th>Symbol</th><th class="numeric">PnL</th></tr></thead><tbody>
       {% for symbol, pnl in report_summary.symbol_contribution.items() %}<tr><td>{{ symbol }}</td><td class="numeric {{ 'positive' if pnl > 0 else 'negative' }}">{{ "%.2f"|format(pnl) }}</td></tr>{% endfor %}
       </tbody></table>
     </div>
-  </article>
-  <article class="panel-card">
-    <div class="panel-header"><h2>Strategy / Exit Summary</h2></div>
+  </details>
+  <details class="panel-card collapsible-panel">
+    <summary class="panel-header collapsible-summary"><h2>Strategy / Exit Summary</h2><span class="collapse-indicator" aria-hidden="true"></span></summary>
     <div class="panel-body split-list">
       <div>
         <h3>Strategy</h3>
@@ -101,61 +101,61 @@
         {% for reason, count in report_summary.exit_reasons.items() %}<p><strong>{{ reason }}</strong><span>{{ count }}</span></p>{% endfor %}
       </div>
     </div>
-  </article>
+  </details>
 </section>
 
 <section class="detail-grid">
-  <article class="panel-card">
-    <div class="panel-header"><h2>Monthly Slice</h2></div>
+  <details class="panel-card collapsible-panel">
+    <summary class="panel-header collapsible-summary"><h2>Monthly Slice</h2><span class="collapse-indicator" aria-hidden="true"></span></summary>
     <div class="table-wrap">
       <table><thead><tr><th>Month</th><th class="numeric">Trades</th><th class="numeric">PnL</th><th class="numeric">Win Rate</th><th class="numeric">Avg PnL</th></tr></thead><tbody>
       {% for row in report_summary.monthly_slice_metrics %}<tr><td>{{ row.name }}</td><td class="numeric">{{ row.trade_count }}</td><td class="numeric {{ 'positive' if row.total_pnl > 0 else 'negative' }}">{{ "%.2f"|format(row.total_pnl) }}</td><td class="numeric">{{ "%.2f%%"|format(row.win_rate * 100) }}</td><td class="numeric">{{ "%.2f"|format(row.average_pnl) }}</td></tr>{% endfor %}
       </tbody></table>
     </div>
-  </article>
-  <article class="panel-card">
-    <div class="panel-header"><h2>Sector Slice</h2></div>
+  </details>
+  <details class="panel-card collapsible-panel">
+    <summary class="panel-header collapsible-summary"><h2>Sector Slice</h2><span class="collapse-indicator" aria-hidden="true"></span></summary>
     <div class="table-wrap">
       <table><thead><tr><th>Sector</th><th class="numeric">Trades</th><th class="numeric">PnL</th><th class="numeric">Win Rate</th><th class="numeric">Avg PnL</th></tr></thead><tbody>
       {% for row in report_summary.sector_slice_metrics %}<tr><td>{{ row.name }}</td><td class="numeric">{{ row.trade_count }}</td><td class="numeric {{ 'positive' if row.total_pnl > 0 else 'negative' }}">{{ "%.2f"|format(row.total_pnl) }}</td><td class="numeric">{{ "%.2f%%"|format(row.win_rate * 100) }}</td><td class="numeric">{{ "%.2f"|format(row.average_pnl) }}</td></tr>{% endfor %}
       </tbody></table>
     </div>
-  </article>
+  </details>
 </section>
 
 <section class="detail-grid">
-  <article class="panel-card">
-    <div class="panel-header"><h2>Strategy Slice</h2></div>
+  <details class="panel-card collapsible-panel">
+    <summary class="panel-header collapsible-summary"><h2>Strategy Slice</h2><span class="collapse-indicator" aria-hidden="true"></span></summary>
     <div class="table-wrap">
       <table><thead><tr><th>Strategy</th><th class="numeric">Trades</th><th class="numeric">PnL</th><th class="numeric">Win Rate</th><th class="numeric">Avg PnL</th></tr></thead><tbody>
       {% for row in report_summary.strategy_slice_metrics %}<tr><td>{{ row.name }}</td><td class="numeric">{{ row.trade_count }}</td><td class="numeric {{ 'positive' if row.total_pnl > 0 else 'negative' }}">{{ "%.2f"|format(row.total_pnl) }}</td><td class="numeric">{{ "%.2f%%"|format(row.win_rate * 100) }}</td><td class="numeric">{{ "%.2f"|format(row.average_pnl) }}</td></tr>{% endfor %}
       </tbody></table>
     </div>
-  </article>
-  <article class="panel-card">
-    <div class="panel-header"><h2>Exit Slice</h2></div>
+  </details>
+  <details class="panel-card collapsible-panel">
+    <summary class="panel-header collapsible-summary"><h2>Exit Slice</h2><span class="collapse-indicator" aria-hidden="true"></span></summary>
     <div class="table-wrap">
       <table><thead><tr><th>Exit</th><th class="numeric">Trades</th><th class="numeric">PnL</th><th class="numeric">Win Rate</th><th class="numeric">Avg PnL</th></tr></thead><tbody>
       {% for row in report_summary.exit_slice_metrics %}<tr><td>{{ row.name }}</td><td class="numeric">{{ row.trade_count }}</td><td class="numeric {{ 'positive' if row.total_pnl > 0 else 'negative' }}">{{ "%.2f"|format(row.total_pnl) }}</td><td class="numeric">{{ "%.2f%%"|format(row.win_rate * 100) }}</td><td class="numeric">{{ "%.2f"|format(row.average_pnl) }}</td></tr>{% endfor %}
       </tbody></table>
     </div>
-  </article>
+  </details>
 </section>
 
 {% if report_summary.duplicates %}
-<article class="panel-card alert-panel">
-  <div class="panel-header"><h2>Duplicate Signal Details</h2><span class="status-badge warn">review</span></div>
+<details class="panel-card alert-panel collapsible-panel">
+  <summary class="panel-header collapsible-summary"><h2>Duplicate Signal Details</h2><span class="summary-actions"><span class="status-badge warn">review</span><span class="collapse-indicator" aria-hidden="true"></span></span></summary>
   <div class="table-wrap">
     <table><thead><tr><th>Duplicate Key</th><th class="numeric">Count</th></tr></thead><tbody>
     {% for duplicate in report_summary.duplicates %}<tr><td>{{ duplicate.key }}</td><td class="numeric">{{ duplicate.count }}</td></tr>{% endfor %}
     </tbody></table>
   </div>
-</article>
+</details>
 {% endif %}
 
 <section class="detail-grid">
-  <article class="panel-card">
-    <div class="panel-header"><h2>Trade Log</h2><span class="state-pill">{{ display_trades|length }} rows</span></div>
+  <details class="panel-card collapsible-panel">
+    <summary class="panel-header collapsible-summary"><h2>Trade Log</h2><span class="summary-actions"><span class="state-pill">{{ display_trades|length }} rows</span><span class="collapse-indicator" aria-hidden="true"></span></span></summary>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Symbol</th><th>Strategy</th><th>Regime</th><th>Entry</th><th>Exit</th><th>Reason</th><th class="numeric">Qty</th><th class="numeric">PnL</th><th class="numeric">Return</th></tr></thead>
@@ -171,9 +171,9 @@
         </tbody>
       </table>
     </div>
-  </article>
-  <article class="panel-card">
-    <div class="panel-header"><h2>Daily Equity</h2><span class="state-pill">{{ display_equity_curve|length }} rows</span></div>
+  </details>
+  <details class="panel-card collapsible-panel">
+    <summary class="panel-header collapsible-summary"><h2>Daily Equity</h2><span class="summary-actions"><span class="state-pill">{{ display_equity_curve|length }} rows</span><span class="collapse-indicator" aria-hidden="true"></span></span></summary>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Date</th><th class="numeric">Equity</th><th class="numeric">Daily PnL</th><th class="numeric">Drawdown</th><th class="numeric">SPY Equity</th><th class="numeric">Open</th></tr></thead>
@@ -191,6 +191,6 @@
         </tbody>
       </table>
     </div>
-  </article>
+  </details>
 </section>
 {% endblock %}

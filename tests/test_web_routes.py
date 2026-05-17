@@ -14,6 +14,16 @@ class FakeSharedRepository:
     def fetch_latest_trade_date(self):
         return date(2026, 1, 2)
 
+    def fetch_sector_by_symbol_and_date(self, requests):
+        sector_map = {
+            ("AAA", date(2026, 1, 1)): "Technology",
+        }
+        return {
+            request: sector_map[request]
+            for request in requests
+            if request in sector_map
+        }
+
 
 class UnavailableSharedRepository:
     def check_readiness(self):
@@ -213,6 +223,9 @@ def test_index_signals_and_backtests_routes_render() -> None:
     assert "Symbol Contribution" in detail.text
     assert "Monthly Slice" in detail.text
     assert "Sector Slice" in detail.text
+    assert "Technology" in detail.text
+    assert '<details class="panel-card collapsible-panel">' in detail.text
+    assert "collapsible-summary" in detail.text
     assert "Sharpe" in detail.text
     assert c.get("/backtests/run").status_code == 200
     assert "백테스트 실행" in c.get("/backtests/run").text
