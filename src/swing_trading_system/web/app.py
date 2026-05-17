@@ -699,9 +699,13 @@ def _display_equity_curve(
     return rows
 
 
-def _build_equity_chart(equity_curve: list[dict[str, object]]) -> dict[str, str]:
+def _build_equity_chart(equity_curve: list[dict[str, object]]) -> dict[str, object]:
     if not equity_curve:
-        return {"strategy_points": "", "benchmark_points": ""}
+        return {
+            "strategy_points": "",
+            "benchmark_points": "",
+            "hover_points": [],
+        }
     width = 720
     height = 220
     pad = 18
@@ -714,24 +718,58 @@ def _build_equity_chart(equity_curve: list[dict[str, object]]) -> dict[str, str]
     ]
     values = [value for value in strategy_values + benchmark_values if value > 0]
     if not values:
-        return {"strategy_points": "", "benchmark_points": ""}
+        return {
+            "strategy_points": "",
+            "benchmark_points": "",
+            "hover_points": [],
+        }
     low = min(values)
     high = max(values)
+
+    def x_for(index: int, total: int) -> float:
+        return pad + ((width - pad * 2) * index / max(total - 1, 1))
+
+    def y_for(value: float) -> float:
+        ratio = 0.5 if high == low else (value - low) / (high - low)
+        return height - pad - ((height - pad * 2) * ratio)
 
     def points_for(series: list[float]) -> str:
         points = []
         for index, value in enumerate(series):
             if value <= 0:
                 continue
-            x = pad + ((width - pad * 2) * index / max(len(series) - 1, 1))
-            ratio = 0.5 if high == low else (value - low) / (high - low)
-            y = height - pad - ((height - pad * 2) * ratio)
+            x = x_for(index, len(series))
+            y = y_for(value)
             points.append(f"{x:.2f},{y:.2f}")
         return " ".join(points)
+
+    hover_points: list[dict[str, object]] = []
+    for index, point in enumerate(equity_curve):
+        strategy_value = strategy_values[index]
+        benchmark_value = benchmark_values[index]
+        if strategy_value <= 0 and benchmark_value <= 0:
+            continue
+        hover_points.append(
+            {
+                "x": round(x_for(index, len(equity_curve)), 2),
+                "strategy_y": round(y_for(strategy_value), 2)
+                if strategy_value > 0
+                else None,
+                "benchmark_y": round(y_for(benchmark_value), 2)
+                if benchmark_value > 0
+                else None,
+                "date": str(point.get("equity_date") or ""),
+                "strategy_value": round(strategy_value, 2) if strategy_value > 0 else None,
+                "benchmark_value": round(benchmark_value, 2)
+                if benchmark_value > 0
+                else None,
+            }
+        )
 
     return {
         "strategy_points": points_for(strategy_values),
         "benchmark_points": points_for(benchmark_values),
+        "hover_points": hover_points,
     }
 
 

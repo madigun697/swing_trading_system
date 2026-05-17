@@ -115,10 +115,25 @@ tbody tr:hover { background: #fbfcfe; }
 .metric-list strong, .split-list strong { color: var(--ink); }
 .split-list { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 
-.equity-chart { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; background: linear-gradient(#fff, #fbfcfe); margin-bottom: 14px; }
+.equity-chart-wrap { position: relative; margin-bottom: 14px; }
+.equity-chart { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; background: linear-gradient(#fff, #fbfcfe); display: block; }
 .chart-line { fill: none; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
 .chart-line.strategy { stroke: var(--accent); }
 .chart-line.benchmark { stroke: #8a95a6; stroke-dasharray: 6 6; }
+.chart-legend { display: flex; gap: 16px; align-items: center; margin-bottom: 10px; color: var(--muted); font-size: 13px; font-weight: 700; }
+.chart-legend-item { display: inline-flex; align-items: center; gap: 8px; }
+.chart-legend-line { width: 28px; height: 0; border-top: 3px solid currentColor; }
+.chart-legend-line.strategy { color: var(--accent); }
+.chart-legend-line.benchmark { color: #8a95a6; border-top-style: dashed; }
+.chart-marker { opacity: 0; transition: opacity 120ms ease; }
+.chart-marker.strategy { fill: var(--accent); }
+.chart-marker.benchmark { fill: #8a95a6; }
+.chart-hover-group.is-active .chart-marker { opacity: 1; }
+.chart-hitbox { fill: transparent; cursor: crosshair; }
+.equity-chart-tooltip { position: absolute; min-width: 148px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.96); box-shadow: 0 10px 30px rgba(22, 31, 50, 0.12); pointer-events: none; }
+.equity-chart-tooltip strong { display: block; margin-bottom: 6px; }
+.tooltip-row { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
+.tooltip-row + .tooltip-row { margin-top: 4px; }
 .comparison-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .comparison-grid div { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--panel-soft); }
 .comparison-grid span { display: block; color: var(--muted); font-size: 12px; font-weight: 800; }

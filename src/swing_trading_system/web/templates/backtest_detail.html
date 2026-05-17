@@ -37,10 +37,41 @@
     </div>
     <div class="panel-body">
       {% if report_summary.chart.strategy_points %}
-      <svg class="equity-chart" viewBox="0 0 720 220" role="img" aria-label="Strategy and benchmark equity curve">
-        <polyline class="chart-line benchmark" points="{{ report_summary.chart.benchmark_points }}"></polyline>
-        <polyline class="chart-line strategy" points="{{ report_summary.chart.strategy_points }}"></polyline>
-      </svg>
+      <div class="chart-legend" aria-label="Chart legend">
+        <span class="chart-legend-item"><span class="chart-legend-line strategy" aria-hidden="true"></span>Strategy</span>
+        <span class="chart-legend-item"><span class="chart-legend-line benchmark" aria-hidden="true"></span>{{ report_summary.benchmark_symbol }}</span>
+      </div>
+      <div class="equity-chart-wrap">
+        <svg class="equity-chart" viewBox="0 0 720 220" role="img" aria-label="Strategy and benchmark equity curve">
+          <polyline class="chart-line benchmark" points="{{ report_summary.chart.benchmark_points }}"></polyline>
+          <polyline class="chart-line strategy" points="{{ report_summary.chart.strategy_points }}"></polyline>
+          {% for point in report_summary.chart.hover_points %}
+          <g class="chart-hover-group">
+            {% if point.strategy_y is not none %}
+            <circle class="chart-marker strategy" cx="{{ point.x }}" cy="{{ point.strategy_y }}" r="3"></circle>
+            {% endif %}
+            {% if point.benchmark_y is not none %}
+            <circle class="chart-marker benchmark" cx="{{ point.x }}" cy="{{ point.benchmark_y }}" r="3"></circle>
+            {% endif %}
+            <rect
+              class="chart-hitbox"
+              x="{{ point.x - 10 }}"
+              y="0"
+              width="20"
+              height="220"
+              data-date="{{ point.date }}"
+              data-strategy="{% if point.strategy_value is not none %}{{ "%.2f"|format(point.strategy_value) }}{% endif %}"
+              data-benchmark="{% if point.benchmark_value is not none %}{{ "%.2f"|format(point.benchmark_value) }}{% endif %}"
+            ></rect>
+          </g>
+          {% endfor %}
+        </svg>
+        <div class="equity-chart-tooltip" hidden>
+          <strong class="tooltip-date"></strong>
+          <span class="tooltip-row"><span>Strategy</span><span class="tooltip-strategy"></span></span>
+          <span class="tooltip-row"><span>{{ report_summary.benchmark_symbol }}</span><span class="tooltip-benchmark"></span></span>
+        </div>
+      </div>
       {% else %}
       <div class="empty-state">No equity curve.</div>
       {% endif %}
@@ -193,4 +224,46 @@
     </div>
   </details>
 </section>
+
+{% if report_summary.chart.hover_points %}
+<script>
+  (() => {
+    const root = document.querySelector(".equity-chart-wrap");
+    if (!root) return;
+    const tooltip = root.querySelector(".equity-chart-tooltip");
+    const hitboxes = root.querySelectorAll(".chart-hitbox");
+    const chart = root.querySelector(".equity-chart");
+    if (!tooltip || !chart || !hitboxes.length) return;
+
+    const dateNode = tooltip.querySelector(".tooltip-date");
+    const strategyNode = tooltip.querySelector(".tooltip-strategy");
+    const benchmarkNode = tooltip.querySelector(".tooltip-benchmark");
+
+    const hideTooltip = () => {
+      tooltip.hidden = true;
+      root.querySelectorAll(".chart-hover-group.is-active").forEach((node) => node.classList.remove("is-active"));
+    };
+
+    hitboxes.forEach((hitbox) => {
+      hitbox.addEventListener("mouseenter", () => {
+        const group = hitbox.parentElement;
+        root.querySelectorAll(".chart-hover-group.is-active").forEach((node) => node.classList.remove("is-active"));
+        group?.classList.add("is-active");
+        dateNode.textContent = hitbox.dataset.date || "-";
+        strategyNode.textContent = `$${hitbox.dataset.strategy || "-"}`;
+        benchmarkNode.textContent = `$${hitbox.dataset.benchmark || "-"}`;
+        tooltip.hidden = false;
+
+        const box = chart.getBoundingClientRect();
+        const x = Number(hitbox.getAttribute("x")) + (Number(hitbox.getAttribute("width")) / 2);
+        const left = (x / 720) * box.width;
+        tooltip.style.left = `${Math.min(Math.max(left + 12, 12), box.width - 160)}px`;
+        tooltip.style.top = "12px";
+      });
+    });
+
+    root.addEventListener("mouseleave", hideTooltip);
+  })();
+</script>
+{% endif %}
 {% endblock %}

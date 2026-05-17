@@ -156,7 +156,20 @@ class FakeBacktestRepository:
         ]
 
     def fetch_run_equity_curve(self, run_id):
-        return [{"run_id": run_id, "equity_date": date(2026, 1, 3), "equity": 100010}]
+        return [
+            {
+                "run_id": run_id,
+                "equity_date": date(2026, 1, 2),
+                "equity": 100000,
+                "details": {"benchmark_equity": 100000},
+            },
+            {
+                "run_id": run_id,
+                "equity_date": date(2026, 1, 3),
+                "equity": 100010,
+                "details": {"benchmark_equity": 101000},
+            },
+        ]
 
     def fetch_run_summary(self, run_id):
         return {
@@ -218,6 +231,9 @@ def test_index_signals_and_backtests_routes_render() -> None:
     detail = c.get("/backtests/r1")
     assert detail.status_code == 200
     assert "Strategy vs SPY" in detail.text
+    assert 'class="chart-legend"' in detail.text
+    assert 'class="equity-chart-tooltip"' in detail.text
+    assert 'data-date="2026-01-03"' in detail.text
     assert "Regime Slice" in detail.text
     assert "regime-aware" in detail.text
     assert "Symbol Contribution" in detail.text
