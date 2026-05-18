@@ -15,6 +15,7 @@ from swing_trading_system.backtest.models import (
     EquityCurvePoint,
     PriceBar,
 )
+from swing_trading_system.market_regime import RegimePolicy
 
 
 class BacktestEngine:
@@ -24,6 +25,8 @@ class BacktestEngine:
         prices_by_symbol: Mapping[str, Sequence[PriceBar]],
         config: BacktestConfig,
         run_id: str | None = None,
+        regime_by_date: Mapping[date, str] | None = None,
+        regime_policy: RegimePolicy | None = None,
     ) -> BacktestResult:
         run_id = run_id or self.generate_run_id()
         input_signals = tuple(signals)
@@ -32,9 +35,18 @@ class BacktestEngine:
         unique_signals, duplicate_rejections = self._dedupe_signals(input_signals)
         rejections.extend(duplicate_rejections)
         for signal in unique_signals:
-            trade, rejection = self._simulate_signal(signal, prices_by_symbol.get(signal.symbol, ()), config, run_id)
+            trade, rejection = self._simulate_signal(
+                signal,
+                prices_by_symbol.get(signal.symbol, ()),
+                config,
+                run_id,
+                regime_by_date or {},
+                regime_policy,
+            )
             if trade is not None:
-                portfolio_rejection = self._portfolio_rejection(signal, trade, trades, config)
+                portfolio_rejection = self._portfolio_rejection(
+                    signal, trade, trades, config, regime_policy
+                )
                 if portfolio_rejection is not None:
                     rejections.append(portfolio_rejection)
                 else:
@@ -94,19 +106,37 @@ class BacktestEngine:
         trade: BacktestTrade,
         accepted_trades: Sequence[BacktestTrade],
         config: BacktestConfig,
+        regime_policy: RegimePolicy | None = None,
     ) -> BacktestRejection | None:
         open_trades = [
             accepted
             for accepted in accepted_trades
             if accepted.entry_date <= trade.entry_date <= accepted.exit_date
         ]
-        if config.max_positions > 0 and len(open_trades) >= config.max_positions:
+        rule = (
+            regime_policy.rule_for(_signal_regime_id(signal))
+            if regime_policy is not None
+            else None
+        )
+        max_positions = config.max_positions
+        if rule is not None and rule.max_positions is not None:
+            max_positions = min(max_positions, rule.max_positions)
+        if max_positions >= 0 and len(open_trades) >= max_positions:
             return BacktestRejection(signal.id, signal.symbol, "max_positions_exceeded")
         max_exposure = config.initial_equity * config.max_gross_exposure_pct
         existing_exposure = sum(accepted.entry_price * accepted.quantity for accepted in open_trades)
         trade_exposure = trade.entry_price * trade.quantity
         if max_exposure > 0 and existing_exposure + trade_exposure > max_exposure:
             return BacktestRejection(signal.id, signal.symbol, "gross_exposure_exceeded")
+        max_portfolio_risk_pct = config.max_portfolio_risk_pct
+        if rule is not None and rule.max_portfolio_risk_pct is not None:
+            max_portfolio_risk_pct = min(max_portfolio_risk_pct, rule.max_portfolio_risk_pct)
+        max_portfolio_risk = config.initial_equity * max(0.0, max_portfolio_risk_pct)
+        if max_portfolio_risk >= 0:
+            existing_risk = sum(_trade_initial_risk(accepted) for accepted in open_trades)
+            trade_risk = max(0.0, signal.risk_per_share) * trade.quantity
+            if existing_risk + trade_risk > max_portfolio_risk:
+                return BacktestRejection(signal.id, signal.symbol, "portfolio_heat_exceeded")
         return None
 
     def _simulate_signal(
@@ -115,6 +145,8 @@ class BacktestEngine:
         price_rows: Sequence[PriceBar],
         config: BacktestConfig,
         run_id: str,
+        regime_by_date: Mapping[date, str],
+        regime_policy: RegimePolicy | None,
     ) -> tuple[BacktestTrade | None, BacktestRejection | None]:
         prices = sorted((bar for bar in price_rows if bar.trade_date > signal.signal_date), key=lambda bar: bar.trade_date)
         if not prices:
@@ -133,10 +165,53 @@ class BacktestEngine:
         exit_legs: list[dict[str, Any]] = []
         remaining_quantity = quantity
         target_scaled = False
+        breakeven_armed = False
+        favorable_threshold = entry_price + (
+            max(0.0, config.failed_trade_min_r_multiple) * signal.risk_per_share
+        )
+        breakeven_threshold = entry_price + (
+            max(0.0, config.breakeven_r_multiple) * signal.risk_per_share
+        )
+        highest_high = entry_bar.high
         for days_held, bar in enumerate(prices[1:], start=1):
+            previous_bar = prices[days_held - 1]
+            if self._risk_off_exit_required(
+                previous_bar.trade_date, regime_by_date, regime_policy
+            ):
+                exit_legs.append(
+                    self._exit_leg(
+                        bar,
+                        remaining_quantity,
+                        bar.open,
+                        slippage,
+                        fee_rate,
+                        "risk_off_exit",
+                    )
+                )
+                remaining_quantity = 0.0
+                break
+            highest_high = max(highest_high, bar.high)
             if not target_scaled:
                 stop_hit = bar.low <= signal.stop_price
                 target_hit = bar.high >= signal.target_price
+                breakeven_hit = (
+                    config.enable_breakeven_stop
+                    and breakeven_armed
+                    and bar.low <= entry_price
+                )
+                if breakeven_hit:
+                    exit_legs.append(
+                        self._exit_leg(
+                            bar,
+                            remaining_quantity,
+                            entry_price,
+                            slippage,
+                            fee_rate,
+                            "breakeven_stop",
+                        )
+                    )
+                    remaining_quantity = 0.0
+                    break
                 if stop_hit:
                     reason = "stop_loss_same_bar_conservative" if target_hit else "stop_loss"
                     exit_legs.append(self._exit_leg(bar, remaining_quantity, signal.stop_price, slippage, fee_rate, reason))
@@ -154,6 +229,29 @@ class BacktestEngine:
                     if not target_scaled:
                         break
                     continue
+                if (
+                    config.enable_breakeven_stop
+                    and not breakeven_armed
+                    and bar.high >= breakeven_threshold
+                ):
+                    breakeven_armed = True
+                if (
+                    config.failed_trade_exit_days > 0
+                    and days_held >= config.failed_trade_exit_days
+                    and highest_high < favorable_threshold
+                ):
+                    exit_legs.append(
+                        self._exit_leg(
+                            bar,
+                            remaining_quantity,
+                            bar.close,
+                            slippage,
+                            fee_rate,
+                            "failed_trade_exit",
+                        )
+                    )
+                    remaining_quantity = 0.0
+                    break
             else:
                 trailing_stop = self._trailing_stop(prices, days_held, config.trailing_ma_days)
                 if trailing_stop is not None and bar.low <= trailing_stop:
@@ -217,11 +315,27 @@ class BacktestEngine:
                     "target_scale_out_pct": config.target_scale_out_pct,
                     "trailing_ma_days": config.trailing_ma_days,
                     "trailing_stop_enabled": config.enable_trailing_stop,
+                    "breakeven_stop_enabled": config.enable_breakeven_stop,
+                    "breakeven_r_multiple": config.breakeven_r_multiple,
+                    "failed_trade_exit_days": config.failed_trade_exit_days,
+                    "failed_trade_min_r_multiple": config.failed_trade_min_r_multiple,
                     "same_bar_exit_forbidden": True,
                 },
             ),
             None,
         )
+
+    def _risk_off_exit_required(
+        self,
+        as_of_date: date,
+        regime_by_date: Mapping[date, str],
+        regime_policy: RegimePolicy | None,
+    ) -> bool:
+        if regime_policy is None:
+            return False
+        regime_id = regime_by_date.get(as_of_date)
+        rule = regime_policy.rule_for(regime_id)
+        return bool(rule is not None and rule.risk_off_exit)
 
     def _sized_quantity(self, signal: BacktestSignal, entry_price: float, config: BacktestConfig) -> float:
         quantity = max(0.0, signal.position_size)
@@ -422,6 +536,26 @@ def _parse_date(value: object) -> date | None:
         except ValueError:
             return None
     return None
+
+
+def _signal_regime_id(signal: BacktestSignal) -> str | None:
+    details = signal.details if isinstance(signal.details, dict) else {}
+    direct = details.get("market_regime") if isinstance(details.get("market_regime"), dict) else {}
+    features = details.get("features") if isinstance(details.get("features"), dict) else {}
+    feature_regime = (
+        features.get("market_regime")
+        if isinstance(features.get("market_regime"), dict)
+        else {}
+    )
+    regime_id = direct.get("regime_id") or feature_regime.get("regime_id")
+    return str(regime_id) if regime_id else None
+
+
+def _trade_initial_risk(trade: BacktestTrade) -> float:
+    details = trade.details if isinstance(trade.details, dict) else {}
+    signal = details.get("signal") if isinstance(details.get("signal"), dict) else {}
+    risk_per_share = _safe_float(signal.get("risk_per_share"))
+    return max(0.0, risk_per_share) * max(0.0, trade.quantity)
 
 
 def _safe_float(value: object) -> float:

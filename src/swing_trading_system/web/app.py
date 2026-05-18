@@ -16,7 +16,7 @@ from swing_trading_system.backtest.engine import BacktestEngine
 from swing_trading_system.backtest.models import BacktestConfig
 from swing_trading_system.backtest.repository import BacktestRepository
 from swing_trading_system.config import Settings
-from swing_trading_system.market_regime import classify_market_regime
+from swing_trading_system.market_regime import classify_market_regime, regime_policy_from_json
 from swing_trading_system.repositories.shared_market import SharedMarketRepository
 
 WEB_DIR = Path(__file__).parent
@@ -169,8 +169,32 @@ def create_app(
                 max_hold_days=config.max_hold_days,
                 benchmark_symbol=config.benchmark_symbol,
             )
+            regime_policy = (
+                regime_policy_from_json(
+                    request.app.state.settings.swing_regime_policy_json,
+                    require_vix=request.app.state.settings.swing_require_vix,
+                    profile=request.app.state.settings.swing_regime_profile,
+                )
+                if require_market_regime
+                else None
+            )
+            regime_by_date = (
+                _backtest_regime_by_date(
+                    signals,
+                    prices,
+                    app.state.shared_market_repository,
+                    app.state.settings,
+                    config,
+                )
+                if require_market_regime
+                else {}
+            )
             result = BacktestEngine().run(
-                signals=signals, prices_by_symbol=prices, config=config
+                signals=signals,
+                prices_by_symbol=prices,
+                config=config,
+                regime_by_date=regime_by_date,
+                regime_policy=regime_policy,
             )
             repository.save_result(result)
         except Exception as exc:
@@ -465,12 +489,20 @@ def _default_run_form(settings: Settings) -> dict[str, str]:
         "max_positions": str(aggressive_defaults.max_positions),
         "max_position_pct": str(aggressive_defaults.max_position_pct),
         "max_gross_exposure_pct": str(aggressive_defaults.max_gross_exposure_pct),
+        "max_portfolio_risk_pct": str(aggressive_defaults.max_portfolio_risk_pct),
         "pullback_size_multiplier": str(aggressive_defaults.pullback_size_multiplier),
         "benchmark_symbol": aggressive_defaults.benchmark_symbol,
         "target_scale_out_pct": str(aggressive_defaults.target_scale_out_pct),
         "trailing_ma_days": str(aggressive_defaults.trailing_ma_days),
+        "failed_trade_exit_days": str(aggressive_defaults.failed_trade_exit_days),
+        "failed_trade_min_r_multiple": str(
+            aggressive_defaults.failed_trade_min_r_multiple
+        ),
         "enable_trailing_stop": "true"
         if aggressive_defaults.enable_trailing_stop
+        else "",
+        "enable_breakeven_stop": "true"
+        if aggressive_defaults.enable_breakeven_stop
         else "",
     }
 
@@ -506,10 +538,13 @@ def _validate_run_form(form_values: dict[str, str]) -> dict[str, str]:
         "max_positions": "동시 보유 종목 수",
         "max_position_pct": "종목당 최대 비중",
         "max_gross_exposure_pct": "총 노출 한도",
+        "max_portfolio_risk_pct": "포트폴리오 최대 위험",
         "pullback_size_multiplier": "Pullback 수량 배율",
         "benchmark_symbol": "벤치마크",
         "target_scale_out_pct": "목표가 부분익절 비중",
         "trailing_ma_days": "Trailing MA 일수",
+        "failed_trade_exit_days": "실패 거래 조기청산 일수",
+        "failed_trade_min_r_multiple": "실패 거래 최소 R",
     }
     for field, label in positive_fields.items():
         value = str(form_values.get(field) or "").strip()
@@ -537,11 +572,17 @@ def _config_from_form(form_values: dict[str, str]) -> BacktestConfig:
         max_positions=int(float(form_values["max_positions"])),
         max_gross_exposure_pct=float(form_values["max_gross_exposure_pct"]),
         max_position_pct=float(form_values["max_position_pct"]),
+        max_portfolio_risk_pct=float(form_values["max_portfolio_risk_pct"]),
         pullback_size_multiplier=float(form_values["pullback_size_multiplier"]),
         benchmark_symbol=str(form_values["benchmark_symbol"]).upper(),
         enable_trailing_stop=bool(form_values.get("enable_trailing_stop")),
         target_scale_out_pct=float(form_values["target_scale_out_pct"]),
         trailing_ma_days=int(float(form_values["trailing_ma_days"])),
+        enable_breakeven_stop=bool(form_values.get("enable_breakeven_stop")),
+        failed_trade_exit_days=int(float(form_values["failed_trade_exit_days"])),
+        failed_trade_min_r_multiple=float(
+            form_values["failed_trade_min_r_multiple"]
+        ),
     )
 
 
@@ -755,6 +796,59 @@ def _chart_regime_by_date(
         )
         regime_by_date[equity_date.isoformat()] = snapshot.regime_id.value
     return regime_by_date
+
+
+def _backtest_regime_by_date(
+    signals: list[object],
+    prices_by_symbol: dict[str, list[object]],
+    repository: SharedMarketRepository,
+    settings: Settings,
+    config: BacktestConfig,
+) -> dict[date, str]:
+    price_dates = sorted(
+        {
+            bar.trade_date
+            for symbol, bars in prices_by_symbol.items()
+            if symbol != config.benchmark_symbol
+            for bar in bars
+            if getattr(bar, "trade_date", None) is not None
+        }
+    )
+    if not price_dates:
+        return {}
+    start_date = min(
+        price_dates[0],
+        min(
+            (
+                signal.signal_date
+                for signal in signals
+                if getattr(signal, "signal_date", None) is not None
+            ),
+            default=price_dates[0],
+        ),
+    )
+    benchmark_rows = repository.fetch_daily_prices(
+        config.benchmark_symbol,
+        start_date=start_date - timedelta(days=400),
+        end_date=price_dates[-1],
+        limit=2_000,
+    )
+    benchmark_series = repository.fetch_benchmark_series(
+        [settings.swing_vix_benchmark_name],
+        start_date=start_date - timedelta(days=400),
+        end_date=price_dates[-1],
+        limit=2_000,
+    )
+    vix_rows = benchmark_series.get(settings.swing_vix_benchmark_name, [])
+    return {
+        price_date: classify_market_regime(
+            benchmark_rows=benchmark_rows,
+            vix_rows=vix_rows,
+            as_of_date=price_date,
+            require_vix=settings.swing_require_vix,
+        ).regime_id.value
+        for price_date in price_dates
+    }
 
 
 def _build_equity_chart(

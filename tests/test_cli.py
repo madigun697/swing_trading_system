@@ -197,7 +197,14 @@ def test_run_backtest_handler_dry_run(monkeypatch) -> None:
         signal_end_date = date(2026, 1, 1)
 
     class FakeEngine:
-        def run(self, signals, prices_by_symbol, config):
+        def run(
+            self,
+            signals,
+            prices_by_symbol,
+            config,
+            regime_by_date=None,
+            regime_policy=None,
+        ):
             return FakeResult()
 
     monkeypatch.setattr(cli, "BacktestRepository", FakeRepository)
@@ -263,7 +270,16 @@ def test_run_backtest_market_regime_strategy_requires_regime_signals(
         signal_end_date = None
 
     class FakeEngine:
-        def run(self, signals, prices_by_symbol, config):
+        def run(
+            self,
+            signals,
+            prices_by_symbol,
+            config,
+            regime_by_date=None,
+            regime_policy=None,
+        ):
+            assert regime_by_date == {}
+            assert regime_policy is not None
             return FakeResult()
 
     monkeypatch.setattr(cli, "BacktestRepository", FakeRepository)

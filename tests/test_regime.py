@@ -48,11 +48,28 @@ def test_vix_spike_takes_deep_bear_precedence() -> None:
     assert regime.reason == "deep_bear_spy_trend_or_vix"
 
 
+def test_weak_bull_is_downgraded_to_sideways() -> None:
+    rows = benchmark_rows(days=221, start_close=100.0, step=1.0)
+    rows[-1]["value"] = rows[-2]["value"] * 0.98
+
+    regime = classify_market_regime(
+        benchmark_rows=rows,
+        vix_rows=vix_row(26),
+        as_of_date=date(2025, 8, 9),
+        require_vix=True,
+    )
+
+    assert regime.regime_id == MarketRegimeId.R3_SIDEWAYS
+    assert regime.reason == "sideways_risk_control_weak_bull"
+
+
 def test_default_aggressive_policy_blocks_new_bear_entries() -> None:
     policy = default_regime_policy(require_vix=True)
 
     assert policy.position_multiplier(MarketRegimeId.R1_STRONG_BULL, "breakout") == 0.605
+    assert policy.position_multiplier(MarketRegimeId.R1_STRONG_BULL, "pullback") == 0.11
     assert policy.position_multiplier(MarketRegimeId.R4_EARLY_BEAR, "pullback") == 0.0
+    assert policy.rule_for(MarketRegimeId.R4_EARLY_BEAR).risk_off_exit is True
 
 
 def test_policy_json_overrides_default_weights() -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Sequence
 
 from swing_trading_system.backfill import backfill_sprint2_bootstrap
@@ -13,7 +13,7 @@ from swing_trading_system.backtest.models import BacktestConfig
 from swing_trading_system.backtest.repository import BacktestRepository
 from swing_trading_system.config import Settings
 from swing_trading_system.db import check_database_connection, initialize_schema
-from swing_trading_system.market_regime import regime_policy_from_json
+from swing_trading_system.market_regime import classify_market_regime, regime_policy_from_json
 from swing_trading_system.repositories.shared_market import SharedMarketRepository
 from swing_trading_system.repositories.swing_repository import SwingRepository
 from swing_trading_system.screening.input_loader import ScreeningInputLoader
@@ -110,11 +110,15 @@ def build_parser() -> argparse.ArgumentParser:
     run_backtest.add_argument("--max-positions", type=int, default=None)
     run_backtest.add_argument("--max-gross-exposure-pct", type=float, default=None)
     run_backtest.add_argument("--max-position-pct", type=float, default=None)
+    run_backtest.add_argument("--max-portfolio-risk-pct", type=float, default=None)
     run_backtest.add_argument("--pullback-size-multiplier", type=float, default=None)
     run_backtest.add_argument("--benchmark-symbol", default=None)
     run_backtest.add_argument("--target-scale-out-pct", type=float, default=None)
     run_backtest.add_argument("--trailing-ma-days", type=int, default=None)
     run_backtest.add_argument("--disable-trailing-stop", action="store_true")
+    run_backtest.add_argument("--disable-breakeven-stop", action="store_true")
+    run_backtest.add_argument("--failed-trade-exit-days", type=int, default=None)
+    run_backtest.add_argument("--failed-trade-min-r-multiple", type=float, default=None)
     run_backtest.add_argument(
         "--dry-run", action="store_true", help="Run without saving backtest results"
     )
@@ -248,6 +252,7 @@ def handle_run_backtest(
     args: argparse.Namespace, settings: Settings | None = None
 ) -> tuple[int, dict[str, Any]]:
     settings = settings or Settings()
+    require_market_regime = _is_market_regime_strategy(args.strategy)
     config = BacktestConfig(
         initial_equity=args.initial_equity or settings.swing_account_equity,
         fee_bps=args.fee_bps if args.fee_bps is not None else settings.swing_fee_bps,
@@ -255,7 +260,8 @@ def handle_run_backtest(
         if args.slippage_bps is not None
         else settings.swing_slippage_bps,
         max_hold_days=args.max_hold_days or settings.swing_default_max_hold_days,
-        max_positions=args.max_positions or settings.swing_max_positions,
+        max_positions=args.max_positions
+        or (15 if require_market_regime else settings.swing_max_positions),
         max_gross_exposure_pct=(
             args.max_gross_exposure_pct
             if args.max_gross_exposure_pct is not None
@@ -265,6 +271,11 @@ def handle_run_backtest(
             getattr(args, "max_position_pct", None)
             if getattr(args, "max_position_pct", None) is not None
             else settings.swing_max_position_pct
+        ),
+        max_portfolio_risk_pct=(
+            getattr(args, "max_portfolio_risk_pct", None)
+            if getattr(args, "max_portfolio_risk_pct", None) is not None
+            else BacktestConfig().max_portfolio_risk_pct
         ),
         pullback_size_multiplier=(
             getattr(args, "pullback_size_multiplier", None)
@@ -286,12 +297,24 @@ def handle_run_backtest(
             if getattr(args, "trailing_ma_days", None) is not None
             else settings.swing_trailing_ma_days
         ),
+        enable_breakeven_stop=not bool(
+            getattr(args, "disable_breakeven_stop", False)
+        ),
+        failed_trade_exit_days=(
+            getattr(args, "failed_trade_exit_days", None)
+            if getattr(args, "failed_trade_exit_days", None) is not None
+            else BacktestConfig().failed_trade_exit_days
+        ),
+        failed_trade_min_r_multiple=(
+            getattr(args, "failed_trade_min_r_multiple", None)
+            if getattr(args, "failed_trade_min_r_multiple", None) is not None
+            else BacktestConfig().failed_trade_min_r_multiple
+        ),
     )
     repository = BacktestRepository(settings)
     start_date = date.fromisoformat(args.start_date) if args.start_date else None
     end_date = date.fromisoformat(args.end_date) if args.end_date else None
     symbols = _parse_symbols(args.symbols)
-    require_market_regime = _is_market_regime_strategy(args.strategy)
     strategy = None if require_market_regime else args.strategy
     signals = repository.fetch_signals(
         start_date=start_date,
@@ -307,8 +330,26 @@ def handle_run_backtest(
         max_hold_days=config.max_hold_days,
         benchmark_symbol=config.benchmark_symbol,
     )
+    regime_policy = (
+        regime_policy_from_json(
+            settings.swing_regime_policy_json,
+            require_vix=settings.swing_require_vix,
+            profile=settings.swing_regime_profile,
+        )
+        if require_market_regime
+        else None
+    )
+    regime_by_date = (
+        _backtest_regime_by_date(signals, prices, settings, config)
+        if require_market_regime
+        else {}
+    )
     result = BacktestEngine().run(
-        signals=signals, prices_by_symbol=prices, config=config
+        signals=signals,
+        prices_by_symbol=prices,
+        config=config,
+        regime_by_date=regime_by_date,
+        regime_policy=regime_policy,
     )
     saved = {"trades_saved": 0, "equity_points_saved": 0}
     if not args.dry_run:
@@ -342,6 +383,49 @@ def _is_market_regime_strategy(strategy: str | None) -> bool:
         "__market_regime__",
         "market_regime",
         "market-regime",
+    }
+
+
+def _backtest_regime_by_date(
+    signals: Sequence[Any],
+    prices_by_symbol: dict[str, Sequence[Any]],
+    settings: Settings,
+    config: BacktestConfig,
+) -> dict[date, str]:
+    price_dates = sorted(
+        {
+            bar.trade_date
+            for symbol, bars in prices_by_symbol.items()
+            if symbol != config.benchmark_symbol
+            for bar in bars
+            if getattr(bar, "trade_date", None) is not None
+        }
+    )
+    if not price_dates:
+        return {}
+    repository = SharedMarketRepository(settings)
+    start_date = min(price_dates[0], min(signal.signal_date for signal in signals))
+    benchmark_rows = repository.fetch_daily_prices(
+        config.benchmark_symbol,
+        start_date=start_date - timedelta(days=400),
+        end_date=price_dates[-1],
+        limit=2_000,
+    )
+    benchmark_series = repository.fetch_benchmark_series(
+        [settings.swing_vix_benchmark_name],
+        start_date=start_date - timedelta(days=400),
+        end_date=price_dates[-1],
+        limit=2_000,
+    )
+    vix_rows = benchmark_series.get(settings.swing_vix_benchmark_name, [])
+    return {
+        price_date: classify_market_regime(
+            benchmark_rows=benchmark_rows,
+            vix_rows=vix_rows,
+            as_of_date=price_date,
+            require_vix=settings.swing_require_vix,
+        ).regime_id.value
+        for price_date in price_dates
     }
 
 

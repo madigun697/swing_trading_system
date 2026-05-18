@@ -21,6 +21,9 @@ class RegimeRule:
     strategy_weights: Mapping[str, float]
     max_gross_exposure_pct: float
     new_entries_allowed: bool
+    max_positions: int | None = None
+    max_portfolio_risk_pct: float | None = None
+    risk_off_exit: bool = False
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,9 @@ class RegimePolicy:
                     "strategy_weights": dict(rule.strategy_weights),
                     "max_gross_exposure_pct": rule.max_gross_exposure_pct,
                     "new_entries_allowed": rule.new_entries_allowed,
+                    "max_positions": rule.max_positions,
+                    "max_portfolio_risk_pct": rule.max_portfolio_risk_pct,
+                    "risk_off_exit": rule.risk_off_exit,
                 }
                 for regime_id, rule in self.rules.items()
             },
@@ -98,37 +104,51 @@ def default_regime_policy(
         require_vix=require_vix,
         rules={
             MarketRegimeId.R1_STRONG_BULL: RegimeRule(
-                strategy_weights={"breakout": 0.55, "quality_momentum": 0.45},
+                strategy_weights={
+                    "breakout": 0.55,
+                    "quality_momentum": 0.45,
+                    "pullback": 0.10,
+                },
                 max_gross_exposure_pct=1.10,
                 new_entries_allowed=True,
+                max_positions=15,
+                max_portfolio_risk_pct=0.06,
             ),
             MarketRegimeId.R2_VOLATILE_BULL: RegimeRule(
                 strategy_weights={
-                    "pullback": 0.45,
-                    "breakout": 0.35,
-                    "quality_momentum": 0.20,
+                    "pullback": 0.65,
+                    "breakout": 0.20,
+                    "quality_momentum": 0.15,
                 },
-                max_gross_exposure_pct=1.10,
+                max_gross_exposure_pct=0.80,
                 new_entries_allowed=True,
+                max_positions=10,
+                max_portfolio_risk_pct=0.035,
             ),
             MarketRegimeId.R3_SIDEWAYS: RegimeRule(
                 strategy_weights={
-                    "pullback": 0.60,
-                    "quality_momentum": 0.25,
-                    "breakout": 0.15,
+                    "pullback": 1.00,
                 },
-                max_gross_exposure_pct=0.60,
+                max_gross_exposure_pct=0.25,
                 new_entries_allowed=True,
+                max_positions=5,
+                max_portfolio_risk_pct=0.015,
             ),
             MarketRegimeId.R4_EARLY_BEAR: RegimeRule(
                 strategy_weights={},
                 max_gross_exposure_pct=0.0,
                 new_entries_allowed=False,
+                max_positions=0,
+                max_portfolio_risk_pct=0.0,
+                risk_off_exit=True,
             ),
             MarketRegimeId.R5_DEEP_BEAR: RegimeRule(
                 strategy_weights={},
                 max_gross_exposure_pct=0.0,
                 new_entries_allowed=False,
+                max_positions=0,
+                max_portfolio_risk_pct=0.0,
+                risk_off_exit=True,
             ),
         },
     )
@@ -171,6 +191,17 @@ def regime_policy_from_json(
             new_entries_allowed=bool(
                 value.get("new_entries_allowed", current.new_entries_allowed)
             ),
+            max_positions=(
+                int(value["max_positions"])
+                if value.get("max_positions") is not None
+                else current.max_positions
+            ),
+            max_portfolio_risk_pct=(
+                float(value["max_portfolio_risk_pct"])
+                if value.get("max_portfolio_risk_pct") is not None
+                else current.max_portfolio_risk_pct
+            ),
+            risk_off_exit=bool(value.get("risk_off_exit", current.risk_off_exit)),
         )
     return RegimePolicy(profile=policy_profile, require_vix=require_vix, rules=rules)
 
@@ -207,6 +238,9 @@ def classify_market_regime(
         and ma200 is not None
         and benchmark_close > ma50 > ma200
     )
+    below_ma50 = (
+        benchmark_close is not None and ma50 is not None and benchmark_close < ma50
+    )
 
     if (below_ma200 and (return_60d or 0.0) <= -0.15) or (
         vix_value is not None and vix_value >= 40
@@ -223,6 +257,13 @@ def classify_market_regime(
     ):
         regime_id = MarketRegimeId.R1_STRONG_BULL
         reason = "strong_bull_low_vix_uptrend"
+    elif above_ma200 and (
+        below_ma50
+        or (return_20d is not None and return_20d <= -0.03)
+        or (vix_value is not None and vix_value >= 25)
+    ):
+        regime_id = MarketRegimeId.R3_SIDEWAYS
+        reason = "sideways_risk_control_weak_bull"
     elif above_ma200 and (vix_value is None or vix_value < 30):
         regime_id = MarketRegimeId.R2_VOLATILE_BULL
         reason = "volatile_bull_above_ma200"

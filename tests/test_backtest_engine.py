@@ -2,6 +2,7 @@ from datetime import date, timedelta
 
 from swing_trading_system.backtest.engine import BacktestEngine
 from swing_trading_system.backtest.models import BacktestConfig, BacktestSignal, PriceBar
+from swing_trading_system.market_regime import MarketRegimeId, default_regime_policy
 
 
 def signal() -> BacktestSignal:
@@ -15,6 +16,21 @@ def signal() -> BacktestSignal:
         target_price=110,
         risk_per_share=5,
         position_size=10,
+    )
+
+
+def regime_signal(regime_id: MarketRegimeId, signal_id: int = 1, symbol: str = "AAA") -> BacktestSignal:
+    return BacktestSignal(
+        id=signal_id,
+        symbol=symbol,
+        signal_date=date(2026, 1, 1),
+        strategy="pullback",
+        entry_price=100,
+        stop_price=95,
+        target_price=110,
+        risk_per_share=5,
+        position_size=10,
+        details={"market_regime": {"regime_id": regime_id.value}},
     )
 
 
@@ -165,3 +181,95 @@ def test_engine_uses_stop_first_when_stop_and_target_same_bar() -> None:
 
     assert result.trades[0].exit_reason == "stop_loss_same_bar_conservative"
     assert result.trades[0].exit_price == 95
+
+
+def test_engine_risk_off_exits_next_open_after_bear_regime() -> None:
+    result = BacktestEngine().run(
+        [regime_signal(MarketRegimeId.R2_VOLATILE_BULL)],
+        {
+            "AAA": [
+                bar(1, open_price=100, high=101, low=99, close=100),
+                bar(2, open_price=90, high=92, low=88, close=91),
+            ]
+        },
+        BacktestConfig(fee_bps=0, slippage_bps=0),
+        run_id="r",
+        regime_by_date={date(2026, 1, 2): MarketRegimeId.R4_EARLY_BEAR.value},
+        regime_policy=default_regime_policy(require_vix=True),
+    )
+
+    assert result.trades[0].exit_reason == "risk_off_exit"
+    assert result.trades[0].exit_price == 90
+
+
+def test_engine_rejects_when_regime_portfolio_heat_is_exceeded() -> None:
+    second = regime_signal(MarketRegimeId.R1_STRONG_BULL, signal_id=2, symbol="BBB")
+    result = BacktestEngine().run(
+        [regime_signal(MarketRegimeId.R1_STRONG_BULL), second],
+        {
+            "AAA": [
+                PriceBar("AAA", date(2026, 1, 2), 100, 101, 99, 100),
+                PriceBar("AAA", date(2026, 1, 3), 100, 101, 99, 100),
+            ],
+            "BBB": [
+                PriceBar("BBB", date(2026, 1, 2), 100, 101, 99, 100),
+                PriceBar("BBB", date(2026, 1, 3), 100, 101, 99, 100),
+            ],
+        },
+        BacktestConfig(
+            initial_equity=1000,
+            fee_bps=0,
+            slippage_bps=0,
+            max_gross_exposure_pct=10,
+            max_position_pct=0,
+        ),
+        run_id="r",
+        regime_policy=default_regime_policy(require_vix=True),
+    )
+
+    assert len(result.trades) == 1
+    assert any(
+        rejection.reason == "portfolio_heat_exceeded"
+        for rejection in result.rejections
+    )
+
+
+def test_engine_moves_stop_to_breakeven_after_one_r() -> None:
+    result = BacktestEngine().run(
+        [signal()],
+        {
+            "AAA": [
+                bar(1, open_price=100, high=101, low=99, close=100),
+                bar(2, high=106, low=99, close=104),
+                bar(3, high=104, low=99, close=100),
+            ]
+        },
+        BacktestConfig(fee_bps=0, slippage_bps=0),
+        run_id="r",
+    )
+
+    assert result.trades[0].exit_reason == "breakeven_stop"
+    assert result.trades[0].pnl == 0
+
+
+def test_engine_exits_failed_trade_without_widening_stop() -> None:
+    result = BacktestEngine().run(
+        [signal()],
+        {
+            "AAA": [
+                bar(1, open_price=100, high=101, low=99, close=100),
+                bar(2, high=101, low=98, close=99),
+                bar(3, high=101, low=98, close=99),
+            ]
+        },
+        BacktestConfig(
+            fee_bps=0,
+            slippage_bps=0,
+            failed_trade_exit_days=2,
+            failed_trade_min_r_multiple=0.5,
+        ),
+        run_id="r",
+    )
+
+    assert result.trades[0].exit_reason == "failed_trade_exit"
+    assert result.trades[0].exit_price == 99
