@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
 
@@ -24,12 +24,118 @@ class FakeSharedRepository:
             if request in sector_map
         }
 
+    def fetch_daily_prices(self, symbol, start_date=None, end_date=None, limit=500):
+        if symbol != "SPY":
+            return []
+        return [
+            *[
+                {
+                    "symbol": "SPY",
+                    "trade_date": date(2025, 6, 1) + timedelta(days=offset),
+                    "close": 100.0,
+                }
+                for offset in range(205)
+            ],
+            {
+                "symbol": "SPY",
+                "trade_date": date(2025, 12, 23),
+                "close": 103.0,
+            },
+            {
+                "symbol": "SPY",
+                "trade_date": date(2025, 12, 24),
+                "close": 105.0,
+            },
+            {
+                "symbol": "SPY",
+                "trade_date": date(2025, 12, 25),
+                "close": 107.0,
+            },
+            {
+                "symbol": "SPY",
+                "trade_date": date(2025, 12, 26),
+                "close": 109.0,
+            },
+            {
+                "symbol": "SPY",
+                "trade_date": date(2025, 12, 27),
+                "close": 110.0,
+            },
+            {
+                "symbol": "SPY",
+                "trade_date": date(2025, 12, 28),
+                "close": 111.0,
+            },
+            {
+                "symbol": "SPY",
+                "trade_date": date(2025, 12, 29),
+                "close": 112.0,
+            },
+            {
+                "symbol": "SPY",
+                "trade_date": date(2025, 12, 30),
+                "close": 113.0,
+            },
+            {
+                "symbol": "SPY",
+                "trade_date": date(2025, 12, 31),
+                "close": 114.0,
+            },
+            {
+                "symbol": "SPY",
+                "trade_date": date(2026, 1, 1),
+                "close": 115.0,
+            },
+            {
+                "symbol": "SPY",
+                "trade_date": date(2026, 1, 2),
+                "close": 116.0,
+            },
+            {
+                "symbol": "SPY",
+                "trade_date": date(2026, 1, 3),
+                "close": 117.0,
+            },
+        ]
+
+    def fetch_benchmark_series(
+        self, benchmark_names, start_date=None, end_date=None, limit=2000
+    ):
+        return {
+            benchmark_name: [
+                {
+                    "benchmark_name": benchmark_name,
+                    "observation_date": date(2026, 1, 2),
+                    "value": 22.0,
+                    "source": "test",
+                },
+                {
+                    "benchmark_name": benchmark_name,
+                    "observation_date": date(2026, 1, 3),
+                    "value": 21.0,
+                    "source": "test",
+                },
+            ]
+            for benchmark_name in benchmark_names
+        }
+
 
 class UnavailableSharedRepository:
     def check_readiness(self):
         return ReadinessStatus(False, "missing_relation", "missing")
 
     def fetch_latest_trade_date(self):
+        raise RuntimeError("shared data unavailable")
+
+    def fetch_sector_by_symbol_and_date(self, requests):
+        raise RuntimeError("shared data unavailable")
+
+    def fetch_daily_prices(self, symbol, start_date=None, end_date=None, limit=500):
+        raise RuntimeError("shared data unavailable")
+
+    def fetch_benchmark_series(
+        self, benchmark_names, start_date=None, end_date=None, limit=2000
+    ):
         raise RuntimeError("shared data unavailable")
 
 
@@ -234,6 +340,8 @@ def test_index_signals_and_backtests_routes_render() -> None:
     assert 'class="chart-legend"' in detail.text
     assert 'class="equity-chart-tooltip"' in detail.text
     assert 'data-date="2026-01-03"' in detail.text
+    assert 'data-regime="R2_VOLATILE_BULL"' in detail.text
+    assert "<span>Regime</span>" in detail.text
     assert "Regime Slice" in detail.text
     assert "regime-aware" in detail.text
     assert "Symbol Contribution" in detail.text
@@ -292,3 +400,13 @@ def test_collection_routes_render_degraded_state_when_repository_fails() -> None
         ).status_code
         == 503
     )
+
+
+def test_backtest_detail_keeps_rendering_when_chart_regime_lookup_fails() -> None:
+    c = TestClient(create_app(UnavailableSharedRepository(), FakeBacktestRepository()))
+
+    detail = c.get("/backtests/r1")
+
+    assert detail.status_code == 200
+    assert "chart regime unavailable" in detail.text
+    assert 'data-regime="-"' in detail.text

@@ -130,7 +130,7 @@ tbody tr:hover { background: #fbfcfe; }
 .chart-marker.benchmark { fill: #8a95a6; }
 .chart-hover-group.is-active .chart-marker { opacity: 1; }
 .chart-hitbox { fill: transparent; cursor: crosshair; }
-.equity-chart-tooltip { position: absolute; min-width: 148px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.96); box-shadow: 0 10px 30px rgba(22, 31, 50, 0.12); pointer-events: none; }
+.equity-chart-tooltip { position: absolute; min-width: 220px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.96); box-shadow: 0 10px 30px rgba(22, 31, 50, 0.12); pointer-events: none; }
 .equity-chart-tooltip strong { display: block; margin-bottom: 6px; }
 .tooltip-row { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
 .tooltip-row + .tooltip-row { margin-top: 4px; }

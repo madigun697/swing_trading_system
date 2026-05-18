@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs
 
@@ -16,6 +16,7 @@ from swing_trading_system.backtest.engine import BacktestEngine
 from swing_trading_system.backtest.models import BacktestConfig
 from swing_trading_system.backtest.repository import BacktestRepository
 from swing_trading_system.config import Settings
+from swing_trading_system.market_regime import classify_market_regime
 from swing_trading_system.repositories.shared_market import SharedMarketRepository
 
 WEB_DIR = Path(__file__).parent
@@ -192,6 +193,7 @@ def create_app(
     async def backtest_detail(request: Request, run_id: str):
         trades = []
         equity_curve = []
+        regime_by_date: dict[str, str] = {}
         summary: dict[str, object] = {}
         ui_warnings: list[str] = []
         try:
@@ -200,6 +202,14 @@ def create_app(
             summary = app.state.backtest_repository.fetch_run_summary(run_id)
         except Exception as exc:
             ui_warnings.append(f"backtest detail unavailable: {type(exc).__name__}")
+        try:
+            regime_by_date = _chart_regime_by_date(
+                equity_curve,
+                app.state.shared_market_repository,
+                app.state.settings,
+            )
+        except Exception as exc:
+            ui_warnings.append(f"chart regime unavailable: {type(exc).__name__}")
         try:
             trades = _enrich_trade_sectors(
                 trades, app.state.shared_market_repository
@@ -211,7 +221,13 @@ def create_app(
             if summary
             else sum(_safe_float(row.get("pnl")) for row in trades)
         )
-        report_summary = _build_report_summary(run_id, trades, equity_curve, summary)
+        report_summary = _build_report_summary(
+            run_id,
+            trades,
+            equity_curve,
+            summary,
+            regime_by_date=regime_by_date,
+        )
         return templates.TemplateResponse(
             request,
             "backtest_detail.html",
@@ -237,6 +253,7 @@ def _build_report_summary(
     trades: list[dict[str, object]],
     equity_curve: list[dict[str, object]],
     summary: dict[str, object],
+    regime_by_date: dict[str, str] | None = None,
 ) -> dict[str, object]:
     metrics = summary.get("metrics") if isinstance(summary.get("metrics"), dict) else {}
     config = summary.get("config") if isinstance(summary.get("config"), dict) else {}
@@ -310,7 +327,7 @@ def _build_report_summary(
         "market_regime_count": sum(
             1 for trade in trades if _trade_market_regime(trade) != "unknown"
         ),
-        "chart": _build_equity_chart(equity_curve),
+        "chart": _build_equity_chart(equity_curve, regime_by_date=regime_by_date),
     }
 
 
@@ -699,7 +716,52 @@ def _display_equity_curve(
     return rows
 
 
-def _build_equity_chart(equity_curve: list[dict[str, object]]) -> dict[str, object]:
+def _chart_regime_by_date(
+    equity_curve: list[dict[str, object]],
+    repository: SharedMarketRepository,
+    settings: Settings,
+) -> dict[str, str]:
+    curve_dates = sorted(
+        {
+            point["equity_date"]
+            for point in equity_curve
+            if isinstance(point.get("equity_date"), date)
+        }
+    )
+    if not curve_dates:
+        return {}
+
+    benchmark_rows = repository.fetch_daily_prices(
+        "SPY",
+        start_date=curve_dates[0] - timedelta(days=400),
+        end_date=curve_dates[-1],
+        limit=1_000,
+    )
+    benchmark_series = repository.fetch_benchmark_series(
+        [settings.swing_vix_benchmark_name],
+        start_date=curve_dates[0] - timedelta(days=400),
+        end_date=curve_dates[-1],
+        limit=2_000,
+    )
+    vix_rows = benchmark_series.get(settings.swing_vix_benchmark_name, [])
+
+    regime_by_date: dict[str, str] = {}
+    for equity_date in curve_dates:
+        snapshot = classify_market_regime(
+            benchmark_rows=benchmark_rows,
+            vix_rows=vix_rows,
+            as_of_date=equity_date,
+            require_vix=settings.swing_require_vix,
+        )
+        regime_by_date[equity_date.isoformat()] = snapshot.regime_id.value
+    return regime_by_date
+
+
+def _build_equity_chart(
+    equity_curve: list[dict[str, object]],
+    regime_by_date: dict[str, str] | None = None,
+) -> dict[str, object]:
+    regime_by_date = regime_by_date or {}
     if not equity_curve:
         return {
             "strategy_points": "",
@@ -763,6 +825,7 @@ def _build_equity_chart(equity_curve: list[dict[str, object]]) -> dict[str, obje
                 "benchmark_value": round(benchmark_value, 2)
                 if benchmark_value > 0
                 else None,
+                "regime_id": regime_by_date.get(str(point.get("equity_date")) or "", "-"),
             }
         )
 

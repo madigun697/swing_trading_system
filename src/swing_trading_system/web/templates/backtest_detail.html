@@ -62,6 +62,7 @@
               data-date="{{ point.date }}"
               data-strategy="{% if point.strategy_value is not none %}{{ "%.2f"|format(point.strategy_value) }}{% endif %}"
               data-benchmark="{% if point.benchmark_value is not none %}{{ "%.2f"|format(point.benchmark_value) }}{% endif %}"
+              data-regime="{{ point.regime_id }}"
             ></rect>
           </g>
           {% endfor %}
@@ -70,6 +71,7 @@
           <strong class="tooltip-date"></strong>
           <span class="tooltip-row"><span>Strategy</span><span class="tooltip-strategy"></span></span>
           <span class="tooltip-row"><span>{{ report_summary.benchmark_symbol }}</span><span class="tooltip-benchmark"></span></span>
+          <span class="tooltip-row"><span>Regime</span><span class="tooltip-regime"></span></span>
         </div>
       </div>
       {% else %}
@@ -238,6 +240,7 @@
     const dateNode = tooltip.querySelector(".tooltip-date");
     const strategyNode = tooltip.querySelector(".tooltip-strategy");
     const benchmarkNode = tooltip.querySelector(".tooltip-benchmark");
+    const regimeNode = tooltip.querySelector(".tooltip-regime");
 
     const hideTooltip = () => {
       tooltip.hidden = true;
@@ -252,6 +255,7 @@
         dateNode.textContent = hitbox.dataset.date || "-";
         strategyNode.textContent = `$${hitbox.dataset.strategy || "-"}`;
         benchmarkNode.textContent = `$${hitbox.dataset.benchmark || "-"}`;
+        regimeNode.textContent = hitbox.dataset.regime || "-";
         tooltip.hidden = false;
 
         const box = chart.getBoundingClientRect();
