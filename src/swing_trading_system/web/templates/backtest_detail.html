@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Backtest {{ run_id }}{% endblock %}
+{% macro config_label(row) -%}
+<abbr title="{{ row.tooltip }}">{{ row.label }}</abbr>
+{%- endmacro %}
 {% block content %}
 <section class="hero-card compact">
   <div>
@@ -88,12 +91,9 @@
   <article class="panel-card">
     <div class="panel-header"><h2>Run Config</h2><span class="state-pill">{% if report_summary.market_regime_enabled %}regime-aware{% else %}legacy{% endif %}</span></div>
     <div class="panel-body metric-list">
-      <p><strong>Initial / Final</strong><span>{{ report_summary.initial_equity or '-' }} → {{ report_summary.final_equity or '-' }}</span></p>
-      <p><strong>Positions</strong><span>{{ report_summary.config.max_positions or '-' }} max · {{ report_summary.config.max_position_pct or '-' }} per name</span></p>
-      <p><strong><abbr title="포트폴리오 전체 매수 노출 한도입니다.">Gross Exposure</abbr></strong><span>{{ report_summary.config.max_gross_exposure_pct or '-' }}</span></p>
-      <p><strong>Regime Trades</strong><span>{{ report_summary.market_regime_count }} / {{ report_summary.trade_count }}</span></p>
-      <p><strong><abbr title="목표가 이후 남은 수량을 이동평균으로 추적 청산합니다.">Trailing Stop</abbr></strong><span>{{ report_summary.config.enable_trailing_stop }}</span></p>
-      <p><strong>Fees / Slippage</strong><span>{{ report_summary.config.fee_bps or 0 }} bps / {{ report_summary.config.slippage_bps or 0 }} bps</span></p>
+      {% for row in run_config_rows %}
+      <p><strong>{{ config_label(row) }}</strong><span>{{ row.value }}</span></p>
+      {% endfor %}
     </div>
   </article>
 </section>

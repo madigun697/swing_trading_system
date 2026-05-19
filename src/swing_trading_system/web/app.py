@@ -25,6 +25,219 @@ STATIC_DIR = WEB_DIR / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
+BACKTEST_CONFIG_META: dict[str, dict[str, str]] = {
+    "start_date": {
+        "label": "Signal 시작일",
+        "tooltip": "백테스트에 포함할 signal 탐색 시작일입니다.",
+    },
+    "end_date": {
+        "label": "Signal 종료일",
+        "tooltip": "백테스트에 포함할 signal 탐색 종료일입니다.",
+    },
+    "strategy": {
+        "label": "Strategy",
+        "tooltip": "저장된 signal 중 어떤 전략 조합을 실행할지 선택합니다.",
+    },
+    "symbols": {
+        "label": "Symbols",
+        "tooltip": "특정 종목만 골라 실행할 때 사용하는 쉼표 구분 목록입니다.",
+    },
+    "initial_equity": {
+        "label": "Initial Equity",
+        "tooltip": "백테스트 시작 시점의 초기 자본입니다.",
+    },
+    "benchmark_symbol": {
+        "label": "Benchmark",
+        "tooltip": "전략 성과를 비교할 기준 자산입니다.",
+    },
+    "max_positions": {
+        "label": "Max Positions",
+        "tooltip": "동시에 보유할 수 있는 최대 종목 수입니다.",
+    },
+    "max_position_pct": {
+        "label": "Max Position %",
+        "tooltip": "한 종목에 배정할 수 있는 최대 자본 비중입니다.",
+    },
+    "max_gross_exposure_pct": {
+        "label": "Gross Exposure",
+        "tooltip": "포트폴리오 전체 매수 노출 한도입니다. 1.10은 초기자본의 110%입니다.",
+    },
+    "max_portfolio_risk_pct": {
+        "label": "Portfolio Heat",
+        "tooltip": "열린 포지션의 초기 손절 위험 합계 한도입니다. 0.06은 초기자본의 6%입니다.",
+    },
+    "pullback_size_multiplier": {
+        "label": "Pullback Size Multiplier",
+        "tooltip": "Pullback 전략 진입 수량에 적용하는 배율입니다.",
+    },
+    "fee_bps": {
+        "label": "Fee bps",
+        "tooltip": "편도 거래 수수료를 basis points 단위로 반영합니다.",
+    },
+    "slippage_bps": {
+        "label": "Slippage bps",
+        "tooltip": "체결 미끄러짐 비용을 basis points 단위로 반영합니다.",
+    },
+    "max_hold_days": {
+        "label": "Max Hold Days",
+        "tooltip": "포지션을 강제 종료하기 전까지 허용하는 최대 보유 일수입니다.",
+    },
+    "target_scale_out_pct": {
+        "label": "Target Scale-out",
+        "tooltip": "목표가 도달 시 일부 익절하고 남은 수량은 추세 추종으로 보유합니다.",
+    },
+    "trailing_ma_days": {
+        "label": "Trailing MA Days",
+        "tooltip": "목표가 이후 남은 수량의 추적 손절에 사용할 이동평균 일수입니다.",
+    },
+    "failed_trade_exit_days": {
+        "label": "Failed Exit Days",
+        "tooltip": "이 기간 안에 최소 R 배수만큼 유리하게 움직이지 못하면 조기 청산합니다.",
+    },
+    "failed_trade_min_r_multiple": {
+        "label": "Failed Exit R",
+        "tooltip": "실패 거래 판정 전 요구하는 최소 유리한 움직임입니다.",
+    },
+    "enable_trailing_stop": {
+        "label": "Trailing Stop",
+        "tooltip": "목표가 도달 후 남은 수량을 이동평균으로 추적 청산합니다.",
+    },
+    "enable_breakeven_stop": {
+        "label": "Breakeven Stop",
+        "tooltip": "+1R 도달 후 손절선을 진입가로 올려 손실 거래 전환을 줄입니다.",
+    },
+    "initial_final_equity": {
+        "label": "Initial / Final Equity",
+        "tooltip": "백테스트 시작 자본과 종료 시점 평가자산입니다.",
+    },
+    "positions_summary": {
+        "label": "Positions",
+        "tooltip": "동시 보유 종목 수와 종목당 최대 비중 제한입니다.",
+    },
+    "fees_slippage_summary": {
+        "label": "Fees / Slippage",
+        "tooltip": "백테스트에 반영한 거래 수수료와 슬리피지 비용입니다.",
+    },
+    "regime_trades": {
+        "label": "Regime Trades",
+        "tooltip": "시장 레짐 정보가 붙은 거래 수와 전체 거래 수입니다.",
+    },
+}
+
+
+def _format_backtest_value(value: object) -> str:
+    if value is None or value == "":
+        return "-"
+    if isinstance(value, bool):
+        return "사용" if value else "미사용"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return f"{value:.3f}".rstrip("0").rstrip(".")
+    return str(value)
+
+
+def _build_run_config_rows(report_summary: dict[str, object]) -> list[dict[str, str]]:
+    config = (
+        report_summary.get("config")
+        if isinstance(report_summary.get("config"), dict)
+        else {}
+    )
+
+    return [
+        {
+            "label": BACKTEST_CONFIG_META["initial_final_equity"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["initial_final_equity"]["tooltip"],
+            "value": (
+                f"{_format_backtest_value(report_summary.get('initial_equity'))} → "
+                f"{_format_backtest_value(report_summary.get('final_equity'))}"
+            ),
+        },
+        {
+            "label": BACKTEST_CONFIG_META["positions_summary"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["positions_summary"]["tooltip"],
+            "value": (
+                f"{_format_backtest_value(config.get('max_positions'))} max · "
+                f"{_format_backtest_value(config.get('max_position_pct'))} per name"
+            ),
+        },
+        {
+            "label": BACKTEST_CONFIG_META["max_gross_exposure_pct"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["max_gross_exposure_pct"]["tooltip"],
+            "value": _format_backtest_value(config.get("max_gross_exposure_pct")),
+        },
+        {
+            "label": BACKTEST_CONFIG_META["max_portfolio_risk_pct"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["max_portfolio_risk_pct"]["tooltip"],
+            "value": _format_backtest_value(config.get("max_portfolio_risk_pct")),
+        },
+        {
+            "label": BACKTEST_CONFIG_META["pullback_size_multiplier"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["pullback_size_multiplier"]["tooltip"],
+            "value": _format_backtest_value(config.get("pullback_size_multiplier")),
+        },
+        {
+            "label": BACKTEST_CONFIG_META["benchmark_symbol"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["benchmark_symbol"]["tooltip"],
+            "value": _format_backtest_value(
+                report_summary.get("benchmark_symbol") or config.get("benchmark_symbol")
+            ),
+        },
+        {
+            "label": BACKTEST_CONFIG_META["max_hold_days"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["max_hold_days"]["tooltip"],
+            "value": _format_backtest_value(config.get("max_hold_days")),
+        },
+        {
+            "label": BACKTEST_CONFIG_META["target_scale_out_pct"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["target_scale_out_pct"]["tooltip"],
+            "value": _format_backtest_value(config.get("target_scale_out_pct")),
+        },
+        {
+            "label": BACKTEST_CONFIG_META["trailing_ma_days"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["trailing_ma_days"]["tooltip"],
+            "value": _format_backtest_value(config.get("trailing_ma_days")),
+        },
+        {
+            "label": BACKTEST_CONFIG_META["enable_trailing_stop"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["enable_trailing_stop"]["tooltip"],
+            "value": _format_backtest_value(config.get("enable_trailing_stop")),
+        },
+        {
+            "label": BACKTEST_CONFIG_META["enable_breakeven_stop"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["enable_breakeven_stop"]["tooltip"],
+            "value": _format_backtest_value(config.get("enable_breakeven_stop")),
+        },
+        {
+            "label": BACKTEST_CONFIG_META["failed_trade_exit_days"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["failed_trade_exit_days"]["tooltip"],
+            "value": _format_backtest_value(config.get("failed_trade_exit_days")),
+        },
+        {
+            "label": BACKTEST_CONFIG_META["failed_trade_min_r_multiple"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["failed_trade_min_r_multiple"]["tooltip"],
+            "value": _format_backtest_value(
+                config.get("failed_trade_min_r_multiple")
+            ),
+        },
+        {
+            "label": BACKTEST_CONFIG_META["fees_slippage_summary"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["fees_slippage_summary"]["tooltip"],
+            "value": (
+                f"{_format_backtest_value(config.get('fee_bps', 0))} bps / "
+                f"{_format_backtest_value(config.get('slippage_bps', 0))} bps"
+            ),
+        },
+        {
+            "label": BACKTEST_CONFIG_META["regime_trades"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["regime_trades"]["tooltip"],
+            "value": (
+                f"{_format_backtest_value(report_summary.get('market_regime_count'))} / "
+                f"{_format_backtest_value(report_summary.get('trade_count'))}"
+            ),
+        },
+    ]
+
 
 def create_app(
     repository: SharedMarketRepository | None = None,
@@ -263,6 +476,8 @@ def create_app(
                 "total_pnl": round(total_pnl, 6),
                 "summary": summary,
                 "report_summary": report_summary,
+                "backtest_config_meta": BACKTEST_CONFIG_META,
+                "run_config_rows": _build_run_config_rows(report_summary),
                 "display_trades": _display_trades(trades),
                 "display_equity_curve": _display_equity_curve(equity_curve),
                 "ui_warnings": ui_warnings,
@@ -602,6 +817,7 @@ def _backtest_run_context(
         "selected_strategy_label": _strategy_option_label(
             str(form_values.get("strategy") or "")
         ),
+        "backtest_config_meta": BACKTEST_CONFIG_META,
         "regime_profile": request.app.state.settings.swing_regime_profile,
         "vix_benchmark_name": request.app.state.settings.swing_vix_benchmark_name,
         "require_vix": request.app.state.settings.swing_require_vix,

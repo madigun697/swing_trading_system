@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Run Backtest{% endblock %}
+{% macro config_label(key) -%}
+<abbr title="{{ backtest_config_meta[key].tooltip }}">{{ backtest_config_meta[key].label }}</abbr>
+{%- endmacro %}
 {% block content %}
 <section class="hero-card compact">
   <div>
@@ -27,18 +30,18 @@
       <input type="hidden" name="risk_profile" value="{{ form_values.risk_profile }}">
 
       <label class="field">
-        <span>Signal 시작일</span>
+        <span>{{ config_label("start_date") }}</span>
         <input type="date" name="start_date" value="{{ form_values.start_date }}">
         {% if errors.start_date %}<small class="field-error">{{ errors.start_date }}</small>{% endif %}
       </label>
       <label class="field">
-        <span>Signal 종료일</span>
+        <span>{{ config_label("end_date") }}</span>
         <input type="date" name="end_date" value="{{ form_values.end_date }}">
         {% if errors.end_date %}<small class="field-error">{{ errors.end_date }}</small>{% endif %}
       </label>
 
       <label class="field">
-        <span>Strategy</span>
+        <span>{{ config_label("strategy") }}</span>
         <select name="strategy">
           {% for option in strategy_options %}
           <option value="{{ option.value }}" {% if form_values.strategy == option.value %}selected{% endif %}>{{ option.label }}</option>
@@ -47,91 +50,91 @@
         <small class="field-help">`Market Regime Switching`은 저장된 regime-aware signal 전체를 사용합니다. 개별 전략 조합과의 비교용으로 아래 옵션을 선택할 수 있습니다.</small>
       </label>
       <label class="field">
-        <span>Symbols</span>
+        <span>{{ config_label("symbols") }}</span>
         <input type="text" name="symbols" value="{{ form_values.symbols }}" placeholder="예: NVDA,PLTR">
         <small class="field-help">비워두면 해당 기간의 전체 signal을 사용합니다.</small>
       </label>
 
       <label class="field">
-        <span>Initial Equity</span>
+        <span>{{ config_label("initial_equity") }}</span>
         <input type="number" step="any" min="1" name="initial_equity" value="{{ form_values.initial_equity }}">
         {% if errors.initial_equity %}<small class="field-error">{{ errors.initial_equity }}</small>{% endif %}
       </label>
       <label class="field">
-        <span><abbr title="전략 성과를 비교할 기준 자산입니다.">Benchmark</abbr></span>
+        <span>{{ config_label("benchmark_symbol") }}</span>
         <input type="text" name="benchmark_symbol" value="{{ form_values.benchmark_symbol }}">
         {% if errors.benchmark_symbol %}<small class="field-error">{{ errors.benchmark_symbol }}</small>{% endif %}
       </label>
 
       <label class="field">
-        <span>Max Positions</span>
+        <span>{{ config_label("max_positions") }}</span>
         <input type="number" step="1" min="1" name="max_positions" value="{{ form_values.max_positions }}">
         {% if errors.max_positions %}<small class="field-error">{{ errors.max_positions }}</small>{% endif %}
       </label>
       <label class="field">
-        <span><abbr title="한 종목에 배정할 수 있는 최대 자본 비중입니다.">Max Position %</abbr></span>
+        <span>{{ config_label("max_position_pct") }}</span>
         <input type="number" step="0.001" min="0.001" name="max_position_pct" value="{{ form_values.max_position_pct }}">
         {% if errors.max_position_pct %}<small class="field-error">{{ errors.max_position_pct }}</small>{% endif %}
       </label>
 
       <label class="field">
-        <span><abbr title="포트폴리오 전체 매수 노출 한도입니다. 1.10은 초기자본의 110%입니다.">Gross Exposure</abbr></span>
+        <span>{{ config_label("max_gross_exposure_pct") }}</span>
         <input type="number" step="0.01" min="0.01" name="max_gross_exposure_pct" value="{{ form_values.max_gross_exposure_pct }}">
         {% if errors.max_gross_exposure_pct %}<small class="field-error">{{ errors.max_gross_exposure_pct }}</small>{% endif %}
       </label>
       <label class="field">
-        <span><abbr title="열린 포지션의 초기 손절 위험 합계 한도입니다. 0.06은 초기자본의 6%입니다.">Portfolio Heat</abbr></span>
+        <span>{{ config_label("max_portfolio_risk_pct") }}</span>
         <input type="number" step="0.001" min="0.001" name="max_portfolio_risk_pct" value="{{ form_values.max_portfolio_risk_pct }}">
         {% if errors.max_portfolio_risk_pct %}<small class="field-error">{{ errors.max_portfolio_risk_pct }}</small>{% endif %}
       </label>
       <label class="field">
-        <span>Pullback Size Multiplier</span>
+        <span>{{ config_label("pullback_size_multiplier") }}</span>
         <input type="number" step="0.01" min="0.01" name="pullback_size_multiplier" value="{{ form_values.pullback_size_multiplier }}">
         {% if errors.pullback_size_multiplier %}<small class="field-error">{{ errors.pullback_size_multiplier }}</small>{% endif %}
       </label>
 
       <label class="field">
-        <span>Fee bps</span>
+        <span>{{ config_label("fee_bps") }}</span>
         <input type="number" step="any" min="0" name="fee_bps" value="{{ form_values.fee_bps }}">
       </label>
       <label class="field">
-        <span>Slippage bps</span>
+        <span>{{ config_label("slippage_bps") }}</span>
         <input type="number" step="any" min="0" name="slippage_bps" value="{{ form_values.slippage_bps }}">
       </label>
 
       <label class="field">
-        <span>Max Hold Days</span>
+        <span>{{ config_label("max_hold_days") }}</span>
         <input type="number" step="1" min="1" name="max_hold_days" value="{{ form_values.max_hold_days }}">
         {% if errors.max_hold_days %}<small class="field-error">{{ errors.max_hold_days }}</small>{% endif %}
       </label>
       <label class="field">
-        <span><abbr title="목표가 도달 시 일부 익절하고 남은 수량은 추세 추종으로 보유합니다.">Target Scale-out</abbr></span>
+        <span>{{ config_label("target_scale_out_pct") }}</span>
         <input type="number" step="0.01" min="0.01" max="1" name="target_scale_out_pct" value="{{ form_values.target_scale_out_pct }}">
         {% if errors.target_scale_out_pct %}<small class="field-error">{{ errors.target_scale_out_pct }}</small>{% endif %}
       </label>
 
       <label class="field">
-        <span><abbr title="목표가 이후 남은 수량의 추적 손절에 사용할 이동평균 일수입니다.">Trailing MA Days</abbr></span>
+        <span>{{ config_label("trailing_ma_days") }}</span>
         <input type="number" step="1" min="1" name="trailing_ma_days" value="{{ form_values.trailing_ma_days }}">
         {% if errors.trailing_ma_days %}<small class="field-error">{{ errors.trailing_ma_days }}</small>{% endif %}
       </label>
       <label class="field">
-        <span><abbr title="이 기간 안에 최소 R 배수만큼 유리하게 움직이지 못하면 조기 청산합니다.">Failed Exit Days</abbr></span>
+        <span>{{ config_label("failed_trade_exit_days") }}</span>
         <input type="number" step="1" min="1" name="failed_trade_exit_days" value="{{ form_values.failed_trade_exit_days }}">
         {% if errors.failed_trade_exit_days %}<small class="field-error">{{ errors.failed_trade_exit_days }}</small>{% endif %}
       </label>
       <label class="field">
-        <span><abbr title="실패 거래 판정 전 요구하는 최소 유리한 움직임입니다.">Failed Exit R</abbr></span>
+        <span>{{ config_label("failed_trade_min_r_multiple") }}</span>
         <input type="number" step="0.1" min="0.1" name="failed_trade_min_r_multiple" value="{{ form_values.failed_trade_min_r_multiple }}">
         {% if errors.failed_trade_min_r_multiple %}<small class="field-error">{{ errors.failed_trade_min_r_multiple }}</small>{% endif %}
       </label>
       <label class="check-field">
         <input type="checkbox" name="enable_trailing_stop" value="true" {% if form_values.enable_trailing_stop %}checked{% endif %}>
-        <span><abbr title="목표가 도달 후 남은 수량을 이동평균으로 추적 청산합니다.">Trailing Stop</abbr> 사용</span>
+        <span>{{ config_label("enable_trailing_stop") }} 사용</span>
       </label>
       <label class="check-field">
         <input type="checkbox" name="enable_breakeven_stop" value="true" {% if form_values.enable_breakeven_stop %}checked{% endif %}>
-        <span><abbr title="+1R 도달 후 손절선을 진입가로 올려 손실 거래 전환을 줄입니다.">Breakeven Stop</abbr> 사용</span>
+        <span>{{ config_label("enable_breakeven_stop") }} 사용</span>
       </label>
     </div>
     <div class="form-actions">

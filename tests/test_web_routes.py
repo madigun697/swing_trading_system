@@ -313,8 +313,15 @@ class FakeBacktestRepository:
                 "max_positions": 10,
                 "max_position_pct": 0.125,
                 "max_gross_exposure_pct": 1.1,
+                "max_portfolio_risk_pct": 0.06,
+                "pullback_size_multiplier": 1.25,
                 "benchmark_symbol": "SPY",
+                "target_scale_out_pct": 0.5,
+                "trailing_ma_days": 10,
                 "enable_trailing_stop": True,
+                "enable_breakeven_stop": True,
+                "failed_trade_exit_days": 6,
+                "failed_trade_min_r_multiple": 0.5,
             },
             "rejections": [],
         }
@@ -351,9 +358,20 @@ def test_index_signals_and_backtests_routes_render() -> None:
     assert '<details class="panel-card collapsible-panel">' in detail.text
     assert "collapsible-summary" in detail.text
     assert "Sharpe" in detail.text
+    assert "Portfolio Heat" in detail.text
+    assert "Pullback Size Multiplier" in detail.text
+    assert "Failed Exit Days" in detail.text
+    assert "Failed Exit R" in detail.text
+    assert "Breakeven Stop" in detail.text
+    assert "사용" in detail.text
+    assert 'title="열린 포지션의 초기 손절 위험 합계 한도입니다. 0.06은 초기자본의 6%입니다."' in detail.text
     assert c.get("/backtests/run").status_code == 200
-    assert "백테스트 실행" in c.get("/backtests/run").text
-    assert "Market Regime Switching" in c.get("/backtests/run").text
+    run_page = c.get("/backtests/run")
+    assert "백테스트 실행" in run_page.text
+    assert "Market Regime Switching" in run_page.text
+    assert 'title="백테스트에 포함할 signal 탐색 시작일입니다."' in run_page.text
+    assert 'title="Pullback 전략 진입 수량에 적용하는 배율입니다."' in run_page.text
+    assert 'title="+1R 도달 후 손절선을 진입가로 올려 손실 거래 전환을 줄입니다."' in run_page.text
     assert c.get("/static/css/app.css").status_code == 200
 
 
