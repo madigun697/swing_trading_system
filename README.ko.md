@@ -19,8 +19,8 @@ English documentation: [README.md](README.md)
   - `breakout`
   - `quality_momentum`
 - daily, weekly, monthly 선택 기준으로 과거 시그널 백필
-- T+1 open entry, stop/target/max-hold exit, target scale-out, trailing stop, SPY benchmark comparison을 포함한 이벤트 기반 백테스트
-- dashboard, signal review, backtest run, backtest detail 확인용 브라우저 UI 제공
+- T+1 open entry, stop/target/max-hold exit, target scale-out, trailing stop, breakeven stop, portfolio heat limit, pullback sizing, failed-exit rules, SPY benchmark comparison을 포함한 이벤트 기반 백테스트
+- dashboard, signal review, backtest run, backtest detail 확인용 브라우저 UI 제공. backtest detail에는 전체 run config와 툴팁 안내가 포함된다.
 
 ## 아키텍처
 
@@ -168,6 +168,10 @@ Market-regime sizing:
 - Target scale-out
 - Trailing moving-average stop
 - Position count 및 gross exposure limit
+- Portfolio heat limit
+- Pullback size multiplier
+- Failed-exit day / R-multiple rule
+- Breakeven stop
 - Fee 및 slippage assumption
 - SPY benchmark comparison
 
@@ -179,7 +183,7 @@ Routes:
 - `/signals`: 최근 signal
 - `/backtests`: 최근 backtest run
 - `/backtests/run`: 브라우저에서 backtest 실행 및 저장, `breakout+pullback` 같은 combined strategy 선택 지원
-- `/backtests/{run_id}`: strategy vs SPY chart, contribution view, slice metrics, trade log, daily equity table을 포함한 detail page
+- `/backtests/{run_id}`: strategy vs SPY chart, contribution view, slice metrics, trade log, daily equity table, 전체 run config를 포함한 detail page
 
 사용자 workflow와 화면 안내: [docs/user_manual.md](docs/user_manual.md)
 

@@ -19,8 +19,8 @@ Korean documentation: [README.ko.md](README.ko.md)
   - `breakout`
   - `quality_momentum`
 - Backfills historical signals over daily, weekly, or monthly date selections
-- Runs event-driven backtests with T+1 open entry, stop/target/max-hold exits, target scale-out, trailing stops, and SPY benchmark comparison
-- Provides a browser UI for dashboard, signal review, backtest runs, and backtest detail pages
+- Runs event-driven backtests with T+1 open entry, stop/target/max-hold exits, target scale-out, trailing stops, breakeven stops, portfolio heat limits, pullback sizing, failed-exit rules, and SPY benchmark comparison
+- Provides a browser UI for dashboard, signal review, backtest runs, and backtest detail pages with full run-config visibility and tooltips
 
 ## Architecture
 
@@ -168,6 +168,10 @@ The backtest supports:
 - Target scale-out
 - Trailing moving-average stop
 - Position count and gross exposure limits
+- Portfolio heat limit
+- Pullback size multiplier
+- Failed-exit day / R-multiple rules
+- Breakeven stop
 - Fee and slippage assumptions
 - SPY benchmark comparison
 
@@ -179,7 +183,7 @@ Routes:
 - `/signals`: recent signals
 - `/backtests`: recent backtest runs
 - `/backtests/run`: run and save a backtest from the browser, including combined strategy selections such as `breakout+pullback`
-- `/backtests/{run_id}`: detail page with strategy vs SPY chart, contribution views, slice metrics, trade log, and daily equity table
+- `/backtests/{run_id}`: detail page with strategy vs SPY chart, contribution views, slice metrics, trade log, daily equity table, and a full run-config summary
 
 End-user workflow and screen guide: [docs/user_manual.md](docs/user_manual.md)
 
