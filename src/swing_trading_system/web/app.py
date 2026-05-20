@@ -137,6 +137,29 @@ BACKTEST_CONFIG_META: dict[str, dict[str, str]] = {
     },
 }
 
+RUN_FORM_COMMON_FIELDS: tuple[str, ...] = (
+    "start_date",
+    "end_date",
+    "strategy",
+    "symbols",
+    "initial_equity",
+    "benchmark_symbol",
+    "max_positions",
+    "max_position_pct",
+    "max_gross_exposure_pct",
+    "max_portfolio_risk_pct",
+    "fee_bps",
+    "slippage_bps",
+    "max_hold_days",
+    "target_scale_out_pct",
+    "trailing_ma_days",
+    "failed_trade_exit_days",
+    "failed_trade_min_r_multiple",
+    "enable_trailing_stop",
+    "enable_breakeven_stop",
+)
+RUN_FORM_OPTIONAL_FIELDS: tuple[str, ...] = ("pullback_size_multiplier",)
+
 
 def _format_backtest_value(value: object) -> str:
     if value is None or value == "":
@@ -784,6 +807,7 @@ async def _read_urlencoded_form(request: Request) -> dict[str, str]:
 
 def _validate_run_form(form_values: dict[str, str]) -> dict[str, str]:
     errors: dict[str, str] = {}
+    visible_fields = _visible_run_fields(form_values)
     for field in ("start_date", "end_date"):
         value = form_values.get(field)
         if value:
@@ -816,6 +840,8 @@ def _validate_run_form(form_values: dict[str, str]) -> dict[str, str]:
         "failed_trade_min_r_multiple": "실패 거래 최소 R",
     }
     for field, label in positive_fields.items():
+        if field in RUN_FORM_OPTIONAL_FIELDS and field not in visible_fields:
+            continue
         value = str(form_values.get(field) or "").strip()
         if not value:
             errors[field] = f"{label} 값을 입력해 주세요."
@@ -859,6 +885,7 @@ def _backtest_run_context(
     errors: dict[str, str] | None = None,
     ui_warnings: list[str] | None = None,
 ) -> dict[str, object]:
+    visible_fields = _visible_run_fields(form_values)
     return {
         "request": request,
         "active_page": "backtests",
@@ -869,6 +896,8 @@ def _backtest_run_context(
         "selected_strategy_label": _strategy_option_label(
             str(form_values.get("strategy") or "")
         ),
+        "visible_run_fields": visible_fields,
+        "strategy_run_fields": _strategy_run_fields_map(),
         "backtest_config_meta": BACKTEST_CONFIG_META,
         "regime_profile": request.app.state.settings.swing_regime_profile,
         "vix_benchmark_name": request.app.state.settings.swing_vix_benchmark_name,
@@ -887,6 +916,21 @@ def _strategy_options() -> list[dict[str, str]]:
 
 def _strategy_option_label(value: str) -> str:
     return resolve_strategy_profile(value).label
+
+
+def _visible_run_fields(form_values: dict[str, str]) -> list[str]:
+    profile = resolve_strategy_profile(form_values.get("strategy"))
+    visible_fields = set(RUN_FORM_COMMON_FIELDS)
+    if "pullback" in profile.selected_signal_strategies():
+        visible_fields.add("pullback_size_multiplier")
+    return sorted(visible_fields)
+
+
+def _strategy_run_fields_map() -> dict[str, list[str]]:
+    return {
+        option["value"]: _visible_run_fields({"strategy": option["value"]})
+        for option in _strategy_options()
+    }
 
 
 def _selected_strategy_filter(form_values: dict[str, str]) -> str | None:

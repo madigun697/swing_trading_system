@@ -541,6 +541,39 @@ def test_backtest_run_form_validates_and_redirects() -> None:
     assert "/backtests/" in valid.headers["location"]
 
 
+def test_backtest_run_form_hides_pullback_only_fields_for_breakout() -> None:
+    c = client()
+
+    response = c.post(
+        "/backtests/run",
+        data={
+            "strategy": "breakout",
+            "start_date": "bad-date",
+        },
+    )
+
+    assert response.status_code == 422
+    assert 'data-run-field="pullback_size_multiplier" hidden' in response.text
+    assert '"breakout": [' in response.text
+    assert '"pullback_size_multiplier"' not in response.text.split('"breakout": [', 1)[1].split("]", 1)[0]
+
+
+def test_backtest_run_form_keeps_pullback_field_for_pullback_strategy() -> None:
+    c = client()
+
+    response = c.post(
+        "/backtests/run",
+        data={
+            "strategy": "pullback",
+            "start_date": "bad-date",
+        },
+    )
+
+    assert response.status_code == 422
+    assert 'data-run-field="pullback_size_multiplier"' in response.text
+    assert 'data-run-field="pullback_size_multiplier" hidden' not in response.text
+
+
 def test_backtest_run_form_accepts_stable_alpha_hybrid() -> None:
     repo = FakeBacktestRepository()
     c = TestClient(create_app(FakeSharedRepository(), repo))

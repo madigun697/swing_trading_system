@@ -42,7 +42,7 @@
 
       <label class="field">
         <span>{{ config_label("strategy") }}</span>
-        <select name="strategy">
+        <select name="strategy" id="strategy-select">
           {% for option in strategy_options %}
           <option value="{{ option.value }}" {% if form_values.strategy == option.value %}selected{% endif %}>{{ option.label }}</option>
           {% endfor %}
@@ -87,9 +87,9 @@
         <input type="number" step="0.001" min="0.001" name="max_portfolio_risk_pct" value="{{ form_values.max_portfolio_risk_pct }}">
         {% if errors.max_portfolio_risk_pct %}<small class="field-error">{{ errors.max_portfolio_risk_pct }}</small>{% endif %}
       </label>
-      <label class="field">
+      <label class="field" data-run-field="pullback_size_multiplier" {% if "pullback_size_multiplier" not in visible_run_fields %}hidden{% endif %}>
         <span>{{ config_label("pullback_size_multiplier") }}</span>
-        <input type="number" step="0.01" min="0.01" name="pullback_size_multiplier" value="{{ form_values.pullback_size_multiplier }}">
+        <input type="number" step="0.01" min="0.01" name="pullback_size_multiplier" value="{{ form_values.pullback_size_multiplier }}" {% if "pullback_size_multiplier" not in visible_run_fields %}disabled{% endif %}>
         {% if errors.pullback_size_multiplier %}<small class="field-error">{{ errors.pullback_size_multiplier }}</small>{% endif %}
       </label>
 
@@ -154,4 +154,28 @@
     </div>
   </aside>
 </section>
+<script>
+  (() => {
+    const strategySelect = document.getElementById("strategy-select");
+    if (!strategySelect) return;
+
+    const strategyRunFields = {{ strategy_run_fields | tojson }};
+    const fieldElements = document.querySelectorAll("[data-run-field]");
+
+    const syncVisibleFields = () => {
+      const visibleFields = new Set(strategyRunFields[strategySelect.value] || []);
+      fieldElements.forEach((element) => {
+        const fieldKey = element.dataset.runField;
+        const isVisible = visibleFields.has(fieldKey);
+        element.hidden = !isVisible;
+        element.querySelectorAll("input, select, textarea").forEach((input) => {
+          input.disabled = !isVisible;
+        });
+      });
+    };
+
+    strategySelect.addEventListener("change", syncVisibleFields);
+    syncVisibleFields();
+  })();
+</script>
 {% endblock %}

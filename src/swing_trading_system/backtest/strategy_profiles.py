@@ -14,6 +14,7 @@ class StrategyProfile:
     key: str
     label: str
     signal_strategy_filter: str | None = None
+    signal_strategies: tuple[str, ...] = ()
     aliases: tuple[str, ...] = ()
     require_market_regime: bool = False
     apply_regime_policy: bool = False
@@ -22,6 +23,17 @@ class StrategyProfile:
     def matches(self, value: str | None) -> bool:
         normalized = normalize_strategy_key(value)
         return normalized == self.key or normalized in self.aliases
+
+    def selected_signal_strategies(self) -> tuple[str, ...]:
+        if self.signal_strategies:
+            return self.signal_strategies
+        if not self.signal_strategy_filter:
+            return ()
+        return tuple(
+            part.strip()
+            for part in self.signal_strategy_filter.split("+")
+            if part.strip()
+        )
 
 
 STABLE_ALPHA_HYBRID_MULTIPLIERS: dict[str, dict[str, float]] = {
@@ -57,11 +69,17 @@ STRATEGY_PROFILES: tuple[StrategyProfile, ...] = (
     StrategyProfile(
         key="market_regime",
         label="Market Regime Switching",
+        signal_strategies=("breakout", "pullback", "quality_momentum"),
         aliases=("__market_regime__", "market-regime"),
         require_market_regime=True,
         apply_regime_policy=True,
     ),
-    StrategyProfile(key="all_signals", label="전체 저장 signal", aliases=("", "all")),
+    StrategyProfile(
+        key="all_signals",
+        label="전체 저장 signal",
+        signal_strategies=("breakout", "pullback", "quality_momentum"),
+        aliases=("", "all"),
+    ),
     StrategyProfile(
         key="breakout", label="Breakout", signal_strategy_filter="breakout"
     ),
@@ -95,6 +113,7 @@ STRATEGY_PROFILES: tuple[StrategyProfile, ...] = (
         key="stable_alpha_hybrid",
         label="Stable Alpha Hybrid",
         signal_strategy_filter="breakout+pullback+quality_momentum",
+        signal_strategies=("breakout", "pullback", "quality_momentum"),
         aliases=("stable-alpha-hybrid",),
         apply_regime_policy=True,
         config_overrides={
