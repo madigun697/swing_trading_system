@@ -260,6 +260,42 @@ class BacktestRepository:
             )
             return list(cur.fetchall())
 
+    def list_optimization_seed_runs(
+        self,
+        signal_start_date: date | None,
+        signal_end_date: date | None,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        clauses = ["config IS NOT NULL", "trade_count > 0"]
+        params: dict[str, Any] = {"limit": limit}
+        if signal_start_date is not None:
+            clauses.append("signal_start_date = %(signal_start_date)s")
+            params["signal_start_date"] = signal_start_date
+        if signal_end_date is not None:
+            clauses.append("signal_end_date = %(signal_end_date)s")
+            params["signal_end_date"] = signal_end_date
+        where = " AND ".join(clauses)
+        with postgres_connection(self.settings) as conn, conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT run_id,
+                       signal_start_date,
+                       signal_end_date,
+                       trade_count,
+                       created_at,
+                       config,
+                       metrics
+                FROM swing_mart.backtest_run_summary
+                WHERE {where}
+                ORDER BY COALESCE((metrics->>'calmar_ratio')::double precision, -1e9) DESC,
+                         COALESCE((metrics->>'cagr')::double precision, -1e9) DESC,
+                         created_at DESC
+                LIMIT %(limit)s
+                """,
+                params,
+            )
+            return list(cur.fetchall())
+
     def fetch_run_trades(self, run_id: str) -> list[dict[str, Any]]:
         with postgres_connection(self.settings) as conn, conn.cursor() as cur:
             cur.execute(

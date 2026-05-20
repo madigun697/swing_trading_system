@@ -45,6 +45,9 @@ def test_build_parser_accepts_required_commands() -> None:
     assert parsed.command == "run-backtest"
     assert parsed.benchmark_symbol == "SPY"
     assert parsed.max_position_pct == 0.125
+    optimize_parsed = parser.parse_args(["optimize-backtest", "--persist-winners"])
+    assert optimize_parsed.command == "optimize-backtest"
+    assert optimize_parsed.persist_winners is True
 
 
 def test_check_connection_handler_reports_ok(monkeypatch) -> None:
@@ -329,3 +332,27 @@ def test_backfill_bootstrap_handler(monkeypatch) -> None:
     assert code == 0
     assert payload["ok"] is True
     assert payload["feature_rows_upserted"] == 2
+
+
+def test_optimize_backtest_handler(monkeypatch) -> None:
+    captured = {}
+
+    def fake_optimize_backtest(**kwargs):
+        captured.update(kwargs)
+        return {"ok": True, "winners": {}}
+
+    monkeypatch.setattr(cli, "optimize_backtest", fake_optimize_backtest)
+
+    args = Namespace(
+        start_date="2025-01-02",
+        end_date="2026-05-01",
+        symbols="AAPL,MSFT",
+        persist_winners=True,
+    )
+
+    code, payload = cli.handle_optimize_backtest(args, Settings(_env_file=None))
+
+    assert code == 0
+    assert payload["ok"] is True
+    assert captured["symbols"] == ["AAPL", "MSFT"]
+    assert captured["persist_winners"] is True

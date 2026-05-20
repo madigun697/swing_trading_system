@@ -10,6 +10,11 @@ from typing import Any, Sequence
 from swing_trading_system.backfill import backfill_sprint2_bootstrap
 from swing_trading_system.backtest.engine import BacktestEngine
 from swing_trading_system.backtest.models import BacktestConfig
+from swing_trading_system.backtest.optimizer import (
+    DEFAULT_OPTIMIZE_END_DATE,
+    DEFAULT_OPTIMIZE_START_DATE,
+    optimize_backtest,
+)
 from swing_trading_system.backtest.repository import BacktestRepository
 from swing_trading_system.config import Settings
 from swing_trading_system.db import check_database_connection, initialize_schema
@@ -121,6 +126,29 @@ def build_parser() -> argparse.ArgumentParser:
     run_backtest.add_argument("--failed-trade-min-r-multiple", type=float, default=None)
     run_backtest.add_argument(
         "--dry-run", action="store_true", help="Run without saving backtest results"
+    )
+
+    optimize_backtest_parser = subparsers.add_parser(
+        "optimize-backtest",
+        help="Sweep backtest input combinations and rank best runs",
+    )
+    optimize_backtest_parser.add_argument(
+        "--start-date",
+        default=DEFAULT_OPTIMIZE_START_DATE.isoformat(),
+        help="Signal start date YYYY-MM-DD",
+    )
+    optimize_backtest_parser.add_argument(
+        "--end-date",
+        default=DEFAULT_OPTIMIZE_END_DATE.isoformat(),
+        help="Signal end date YYYY-MM-DD",
+    )
+    optimize_backtest_parser.add_argument(
+        "--symbols", help="Comma-separated symbols"
+    )
+    optimize_backtest_parser.add_argument(
+        "--persist-winners",
+        action="store_true",
+        help="Persist the winning backtest runs to Swing-owned tables",
     )
     return parser
 
@@ -378,6 +406,20 @@ def handle_run_backtest(
     )
 
 
+def handle_optimize_backtest(
+    args: argparse.Namespace, settings: Settings | None = None
+) -> tuple[int, dict[str, Any]]:
+    settings = settings or Settings()
+    payload = optimize_backtest(
+        settings=settings,
+        start_date=date.fromisoformat(args.start_date) if args.start_date else None,
+        end_date=date.fromisoformat(args.end_date) if args.end_date else None,
+        symbols=_parse_symbols(args.symbols),
+        persist_winners=bool(getattr(args, "persist_winners", False)),
+    )
+    return (0, payload)
+
+
 def _is_market_regime_strategy(strategy: str | None) -> bool:
     return (strategy or "").strip().lower() in {
         "__market_regime__",
@@ -602,6 +644,8 @@ def run(argv: Sequence[str] | None = None) -> int:
         code, payload = handle_run_daily(args, settings)
     elif args.command == "run-backtest":
         code, payload = handle_run_backtest(args, settings)
+    elif args.command == "optimize-backtest":
+        code, payload = handle_optimize_backtest(args, settings)
     else:  # pragma: no cover - argparse prevents this path.
         parser.error(f"unknown command: {args.command}")
 
