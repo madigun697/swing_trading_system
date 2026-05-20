@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from swing_trading_system.backtest.models import BacktestConfig
 from swing_trading_system.market_regime import MarketRegimeId
@@ -147,3 +147,59 @@ def apply_strategy_profile_config(
         if key not in skip_fields:
             payload[key] = value
     return BacktestConfig(**payload)
+
+
+def infer_strategy_label(
+    *,
+    metrics: Mapping[str, Any] | None = None,
+    config: Mapping[str, Any] | None = None,
+    strategies: Sequence[str] | None = None,
+) -> str:
+    metrics = metrics or {}
+    config = config or {}
+    explicit_label = str(metrics.get("strategy_label") or "").strip()
+    if explicit_label:
+        return explicit_label
+    explicit_selection = str(metrics.get("strategy_selection") or "").strip()
+    if explicit_selection:
+        return resolve_strategy_profile(explicit_selection).label
+
+    normalized = sorted(
+        {
+            str(strategy).strip().lower()
+            for strategy in (strategies or ())
+            if str(strategy).strip()
+        }
+    )
+    if _matches_legacy_market_regime_config(config):
+        return "Market Regime Switching"
+    if normalized == ["breakout", "pullback", "quality_momentum"]:
+        return "전체 저장 signal"
+    if normalized:
+        return " + ".join(strategy.replace("_", " ").title() for strategy in normalized)
+    return "-"
+
+
+def _matches_legacy_market_regime_config(config: Mapping[str, Any]) -> bool:
+    return (
+        _as_int(config.get("max_positions")) == 30
+        and _as_int(config.get("max_hold_days")) == 30
+        and _as_float(config.get("max_gross_exposure_pct")) == 1.2
+        and _as_float(config.get("max_portfolio_risk_pct")) == 0.06
+        and _as_float(config.get("target_scale_out_pct")) == 0.5
+        and _as_int(config.get("trailing_ma_days")) == 20
+    )
+
+
+def _as_int(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_float(value: Any) -> float | None:
+    try:
+        return round(float(value), 8) if value is not None else None
+    except (TypeError, ValueError):
+        return None

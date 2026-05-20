@@ -245,7 +245,7 @@ class BacktestRepository:
                            string_agg(
                                DISTINCT COALESCE(details->>'strategy', 'unknown'),
                                ' + '
-                           ) AS strategy_label
+                           ) AS raw_strategy_label
                     FROM swing_mart.backtest_trade_log
                     GROUP BY run_id
                 )
@@ -255,16 +255,14 @@ class BacktestRepository:
                        COALESCE(summary.start_date, trade_runs.start_date) AS start_date,
                        COALESCE(summary.end_date, trade_runs.end_date) AS end_date,
                        COALESCE(summary.created_at, trade_runs.created_at) AS created_at,
-                       COALESCE(
-                           summary.metrics->>'strategy_label',
-                           trade_runs.strategy_label,
-                           '-'
-                       ) AS strategy_label,
+                       trade_runs.raw_strategy_label,
                        (summary.metrics->>'cagr')::double precision AS cagr,
                        COALESCE(
                            summary.max_drawdown,
                            (summary.metrics->>'max_drawdown')::numeric
-                       ) AS max_drawdown
+                       ) AS max_drawdown,
+                       summary.metrics,
+                       summary.config
                 FROM trade_runs
                 FULL OUTER JOIN swing_mart.backtest_run_summary summary USING (run_id)
                 ORDER BY COALESCE(summary.created_at, trade_runs.created_at) DESC

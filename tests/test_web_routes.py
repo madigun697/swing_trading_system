@@ -334,6 +334,135 @@ class FakeBacktestRepository:
         }
 
 
+class LegacyMarketRegimeBacktestRepository(FakeBacktestRepository):
+    def list_recent_runs(self, limit=20):
+        return [
+            {
+                "run_id": "legacy-market-regime",
+                "trade_count": 3,
+                "total_pnl": 100,
+                "raw_strategy_label": "breakout + pullback + quality_momentum",
+                "cagr": 0.074,
+                "max_drawdown": -0.1679,
+                "config": {
+                    "max_hold_days": 30,
+                    "max_positions": 30,
+                    "max_gross_exposure_pct": 1.2,
+                    "max_portfolio_risk_pct": 0.06,
+                    "target_scale_out_pct": 0.5,
+                    "trailing_ma_days": 20,
+                },
+                "metrics": {},
+                "start_date": date(2026, 1, 2),
+                "end_date": date(2026, 1, 3),
+            }
+        ]
+
+    def fetch_run_trades(self, run_id):
+        return [
+            {
+                "run_id": run_id,
+                "symbol": "AAA",
+                "pnl": 10,
+                "details": {
+                    "signal": {
+                        "strategy": "pullback",
+                        "signal_date": date(2026, 1, 1),
+                        "entry_price": 100,
+                        "stop_price": 95,
+                        "target_price": 110,
+                        "details": {"market_regime": {"regime_id": "R2_VOLATILE_BULL"}},
+                    },
+                    "strategy": "pullback",
+                    "exit_reason": "target",
+                },
+            },
+            {
+                "run_id": run_id,
+                "symbol": "BBB",
+                "pnl": 20,
+                "details": {
+                    "signal": {
+                        "strategy": "breakout",
+                        "signal_date": date(2026, 1, 1),
+                        "entry_price": 100,
+                        "stop_price": 95,
+                        "target_price": 110,
+                        "details": {"market_regime": {"regime_id": "R1_STRONG_BULL"}},
+                    },
+                    "strategy": "breakout",
+                    "exit_reason": "target",
+                },
+            },
+            {
+                "run_id": run_id,
+                "symbol": "CCC",
+                "pnl": 30,
+                "details": {
+                    "signal": {
+                        "strategy": "quality_momentum",
+                        "signal_date": date(2026, 1, 1),
+                        "entry_price": 100,
+                        "stop_price": 95,
+                        "target_price": 110,
+                        "details": {"market_regime": {"regime_id": "R1_STRONG_BULL"}},
+                    },
+                    "strategy": "quality_momentum",
+                    "exit_reason": "target",
+                },
+            },
+        ]
+
+    def fetch_run_summary(self, run_id):
+        return {
+            "run_id": run_id,
+            "start_date": date(2026, 1, 2),
+            "end_date": date(2026, 1, 3),
+            "initial_equity": 100000,
+            "final_equity": 100100,
+            "total_pnl": 100,
+            "total_return": 0.001,
+            "max_drawdown": -0.1679,
+            "win_rate": 1,
+            "profit_factor": 1.5,
+            "trade_count": 3,
+            "rejection_count": 0,
+            "metrics": {
+                "symbol_contribution": {"AAA": 10},
+                "strategy_contribution": {"pullback": 10, "breakout": 20},
+                "benchmark_return": 0.01,
+                "benchmark_mdd": 0,
+                "benchmark_cagr": 1.0,
+                "excess_return": -0.009,
+                "sharpe_ratio": 1.0,
+                "cagr": 0.074,
+                "calmar_ratio": 0.44,
+                "average_hold_days": 1,
+                "max_consecutive_wins": 3,
+                "max_consecutive_losses": 0,
+                "expectancy_per_dollar": 0.001,
+            },
+            "config": {
+                "fee_bps": 2,
+                "slippage_bps": 5,
+                "max_hold_days": 30,
+                "max_positions": 30,
+                "max_position_pct": 0.125,
+                "max_gross_exposure_pct": 1.2,
+                "max_portfolio_risk_pct": 0.06,
+                "pullback_size_multiplier": 1.0,
+                "benchmark_symbol": "SPY",
+                "target_scale_out_pct": 0.5,
+                "trailing_ma_days": 20,
+                "enable_trailing_stop": True,
+                "enable_breakeven_stop": True,
+                "failed_trade_exit_days": 6,
+                "failed_trade_min_r_multiple": 0.5,
+            },
+            "rejections": [],
+        }
+
+
 def client():
     return TestClient(create_app(FakeSharedRepository(), FakeBacktestRepository()))
 
@@ -432,6 +561,21 @@ def test_backtest_run_form_accepts_stable_alpha_hybrid() -> None:
     assert repo.saved_result.config.max_portfolio_risk_pct == 0.07
     assert repo.saved_result.config.stop_loss_cooldown_threshold == 6
     assert repo.saved_result.metrics["strategy_label"] == "Stable Alpha Hybrid"
+
+
+def test_legacy_market_regime_run_uses_market_regime_label() -> None:
+    c = TestClient(
+        create_app(FakeSharedRepository(), LegacyMarketRegimeBacktestRepository())
+    )
+
+    backtests = c.get("/backtests")
+    detail = c.get("/backtests/legacy-market-regime")
+
+    assert backtests.status_code == 200
+    assert "Market Regime Switching" in backtests.text
+    assert detail.status_code == 200
+    assert "Market Regime Switching" in detail.text
+    assert "전체 저장 signal" not in detail.text
 
 
 def test_index_renders_degraded_state_when_dependencies_fail() -> None:

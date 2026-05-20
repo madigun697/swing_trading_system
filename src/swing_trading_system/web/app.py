@@ -17,6 +17,7 @@ from swing_trading_system.backtest.models import BacktestConfig
 from swing_trading_system.backtest.repository import BacktestRepository
 from swing_trading_system.backtest.strategy_profiles import (
     apply_strategy_profile_config,
+    infer_strategy_label,
     resolve_strategy_profile,
     strategy_profiles_for_ui,
 )
@@ -294,7 +295,7 @@ def create_app(
         try:
             backtest_repo = app.state.backtest_repository
             signal_count = backtest_repo.count_signals()
-            recent_runs = backtest_repo.list_recent_runs(limit=5)
+            recent_runs = _display_recent_runs(backtest_repo.list_recent_runs(limit=5))
         except Exception as exc:
             ui_warnings.append(f"backtest summary unavailable: {type(exc).__name__}")
         return templates.TemplateResponse(
@@ -334,7 +335,9 @@ def create_app(
         recent_runs = []
         ui_warnings: list[str] = []
         try:
-            recent_runs = app.state.backtest_repository.list_recent_runs(limit=20)
+            recent_runs = _display_recent_runs(
+                app.state.backtest_repository.list_recent_runs(limit=20)
+            )
         except Exception as exc:
             ui_warnings.append(f"backtest runs unavailable: {type(exc).__name__}")
         return templates.TemplateResponse(
@@ -550,8 +553,11 @@ def _build_report_summary(
         "win_rate": summary.get("win_rate") or metrics.get("win_rate"),
         "profit_factor": summary.get("profit_factor") or metrics.get("profit_factor"),
         "strategy_selection": metrics.get("strategy_selection"),
-        "strategy_label": metrics.get("strategy_label")
-        or _strategy_label_from_trades(trades),
+        "strategy_label": infer_strategy_label(
+            metrics=metrics,
+            config=config,
+            strategies=[_trade_strategy(trade) for trade in trades],
+        ),
         "sharpe_ratio": metrics.get("sharpe_ratio"),
         "cagr": metrics.get("cagr"),
         "calmar_ratio": metrics.get("calmar_ratio"),
@@ -617,13 +623,32 @@ def _slice_metrics(trades: list[dict[str, object]], key_fn) -> list[dict[str, ob
     ]
 
 
-def _strategy_label_from_trades(trades: list[dict[str, object]]) -> str:
-    strategies = sorted({_trade_strategy(trade) for trade in trades})
-    if not strategies:
-        return "-"
-    if strategies == ["breakout", "pullback", "quality_momentum"]:
-        return "전체 저장 signal"
-    return " + ".join(strategy.replace("_", " ").title() for strategy in strategies)
+def _display_recent_runs(
+    recent_runs: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    display_runs: list[dict[str, object]] = []
+    for run in recent_runs:
+        metrics = run.get("metrics") if isinstance(run.get("metrics"), dict) else {}
+        config = run.get("config") if isinstance(run.get("config"), dict) else {}
+        explicit_strategy_label = str(run.get("strategy_label") or "").strip()
+        raw_strategy_label = str(run.get("raw_strategy_label") or "")
+        strategies = [
+            part.strip() for part in raw_strategy_label.split("+") if part.strip()
+        ]
+        inferred_metrics = metrics
+        if explicit_strategy_label and "strategy_label" not in inferred_metrics:
+            inferred_metrics = {**metrics, "strategy_label": explicit_strategy_label}
+        display_runs.append(
+            {
+                **run,
+                "strategy_label": infer_strategy_label(
+                    metrics=inferred_metrics,
+                    config=config,
+                    strategies=strategies,
+                ),
+            }
+        )
+    return display_runs
 
 
 def _trade_strategy(trade: dict[str, object]) -> str:
