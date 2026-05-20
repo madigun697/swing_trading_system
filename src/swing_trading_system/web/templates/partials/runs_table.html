@@ -1,11 +1,14 @@
 {% if recent_runs %}
 <div class="table-wrap">
   <table>
-    <thead><tr><th>Run ID</th><th class="numeric">Trades</th><th class="numeric">Total PnL</th><th>Start</th><th>End</th></tr></thead>
+    <thead><tr><th>Run ID</th><th>Strategy</th><th class="numeric">CAGR</th><th class="numeric">MDD</th><th class="numeric">Trades</th><th class="numeric">Total PnL</th><th>Start</th><th>End</th></tr></thead>
     <tbody>
     {% for run in recent_runs %}
       <tr>
         <td><a class="code-chip" href="{{ url_for('backtest_detail', run_id=run.run_id) }}">{{ run.run_id }}</a></td>
+        <td>{{ run.strategy_label or '-' }}</td>
+        <td class="numeric">{{ "%.2f%%"|format((run.cagr or 0) * 100) }}</td>
+        <td class="numeric">{{ "%.2f%%"|format((run.max_drawdown or 0) * 100) }}</td>
         <td class="numeric">{{ run.trade_count }}</td>
         <td class="numeric">{{ run.total_pnl }}</td>
         <td>{{ run.start_date }}</td>

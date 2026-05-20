@@ -38,6 +38,11 @@ class BacktestConfig:
     breakeven_r_multiple: float = 1.0
     failed_trade_exit_days: int = 6
     failed_trade_min_r_multiple: float = 0.5
+    regime_strategy_multipliers: dict[str, dict[str, float]] = field(
+        default_factory=dict
+    )
+    stop_loss_cooldown_lookback_days: int = 0
+    stop_loss_cooldown_threshold: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -59,7 +64,17 @@ class BacktestSignal:
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> "BacktestSignal | None":
-        required = ["id", "symbol", "signal_date", "strategy", "entry_price", "stop_price", "target_price", "risk_per_share", "position_size"]
+        required = [
+            "id",
+            "symbol",
+            "signal_date",
+            "strategy",
+            "entry_price",
+            "stop_price",
+            "target_price",
+            "risk_per_share",
+            "position_size",
+        ]
         if any(row.get(key) is None for key in required):
             return None
         return cls(
@@ -98,7 +113,13 @@ class PriceBar:
         high = as_float(row.get("high"))
         low = as_float(row.get("low"))
         close = as_float(row.get("close"))
-        if row.get("trade_date") is None or open_price is None or high is None or low is None or close is None:
+        if (
+            row.get("trade_date") is None
+            or open_price is None
+            or high is None
+            or low is None
+            or close is None
+        ):
             return None
         return cls(
             symbol=str(row.get("symbol")),
@@ -183,6 +204,10 @@ class BacktestResult:
             "rejections": [rejection.to_dict() for rejection in self.rejections],
             "metrics": self.metrics,
             "signal_count": self.signal_count,
-            "signal_start_date": self.signal_start_date.isoformat() if self.signal_start_date else None,
-            "signal_end_date": self.signal_end_date.isoformat() if self.signal_end_date else None,
+            "signal_start_date": self.signal_start_date.isoformat()
+            if self.signal_start_date
+            else None,
+            "signal_end_date": self.signal_end_date.isoformat()
+            if self.signal_end_date
+            else None,
         }

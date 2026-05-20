@@ -11,6 +11,7 @@
     <p class="hero-copy">전략 성과, SPY 벤치마크, market regime 분포, trade log와 일별 equity curve를 함께 확인합니다.</p>
   </div>
   <div class="hero-actions">
+    <span class="state-pill">{{ report_summary.strategy_label }}</span>
     <a class="btn" href="{{ url_for('backtest_run_form') }}">새 백테스트</a>
     <a class="btn secondary" href="{{ url_for('backtests') }}">Backtests</a>
   </div>

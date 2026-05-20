@@ -45,6 +45,12 @@ def test_build_parser_accepts_required_commands() -> None:
     assert parsed.command == "run-backtest"
     assert parsed.benchmark_symbol == "SPY"
     assert parsed.max_position_pct == 0.125
+    assert (
+        parser.parse_args(
+            ["run-backtest", "--strategy", "stable-alpha-hybrid"]
+        ).strategy
+        == "stable-alpha-hybrid"
+    )
     optimize_parsed = parser.parse_args(["optimize-backtest", "--persist-winners"])
     assert optimize_parsed.command == "optimize-backtest"
     assert optimize_parsed.persist_winners is True
@@ -314,6 +320,89 @@ def test_run_backtest_market_regime_strategy_requires_regime_signals(
     assert fetch_kwargs["strategy"] is None
     assert fetch_kwargs["limit"] is None
     assert fetch_kwargs["require_market_regime"] is True
+
+
+def test_run_backtest_stable_alpha_hybrid_applies_profile(monkeypatch) -> None:
+    fetch_kwargs = {}
+
+    class FakeRepository:
+        def __init__(self, settings=None) -> None:
+            pass
+
+        def fetch_signals(self, **kwargs):
+            fetch_kwargs.update(kwargs)
+            return []
+
+        def fetch_prices_for_signals(
+            self, signals, end_date=None, max_hold_days=20, benchmark_symbol=None
+        ):
+            return {}
+
+        def save_result(self, result):
+            raise AssertionError("dry-run must not save")
+
+    class FakeResult:
+        run_id = "r1"
+        trades = []
+        rejections = []
+        metrics = {"total_return": 0.0}
+        signal_start_date = None
+        signal_end_date = None
+
+    class FakeEngine:
+        def run(
+            self,
+            signals,
+            prices_by_symbol,
+            config,
+            regime_by_date=None,
+            regime_policy=None,
+        ):
+            assert config.max_positions == 15
+            assert config.max_gross_exposure_pct == 1.2
+            assert config.max_portfolio_risk_pct == 0.07
+            assert config.stop_loss_cooldown_lookback_days == 20
+            assert config.stop_loss_cooldown_threshold == 6
+            assert config.regime_strategy_multipliers
+            assert regime_by_date == {}
+            assert regime_policy is not None
+            return FakeResult()
+
+    monkeypatch.setattr(cli, "BacktestRepository", FakeRepository)
+    monkeypatch.setattr(cli, "BacktestEngine", lambda: FakeEngine())
+    args = Namespace(
+        start_date="2026-01-01",
+        end_date=None,
+        strategy="stable_alpha_hybrid",
+        symbols=None,
+        initial_equity=None,
+        fee_bps=None,
+        slippage_bps=None,
+        max_hold_days=None,
+        max_positions=None,
+        max_gross_exposure_pct=None,
+        max_position_pct=None,
+        max_portfolio_risk_pct=None,
+        pullback_size_multiplier=None,
+        benchmark_symbol=None,
+        target_scale_out_pct=None,
+        trailing_ma_days=None,
+        disable_trailing_stop=False,
+        disable_breakeven_stop=False,
+        failed_trade_exit_days=None,
+        failed_trade_min_r_multiple=None,
+        dry_run=True,
+    )
+
+    code, payload = cli.handle_run_backtest(args, Settings(_env_file=None))
+
+    assert code == 0
+    assert payload["market_regime_required"] is False
+    assert payload["strategy_selection"] == "stable_alpha_hybrid"
+    assert payload["strategy_label"] == "Stable Alpha Hybrid"
+    assert payload["metrics"]["strategy_label"] == "Stable Alpha Hybrid"
+    assert fetch_kwargs["strategy"] == "breakout+pullback+quality_momentum"
+    assert fetch_kwargs["require_market_regime"] is False
 
 
 def test_backfill_bootstrap_handler(monkeypatch) -> None:

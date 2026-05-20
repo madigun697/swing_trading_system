@@ -15,8 +15,16 @@ from swing_trading_system import __version__
 from swing_trading_system.backtest.engine import BacktestEngine
 from swing_trading_system.backtest.models import BacktestConfig
 from swing_trading_system.backtest.repository import BacktestRepository
+from swing_trading_system.backtest.strategy_profiles import (
+    apply_strategy_profile_config,
+    resolve_strategy_profile,
+    strategy_profiles_for_ui,
+)
 from swing_trading_system.config import Settings
-from swing_trading_system.market_regime import classify_market_regime, regime_policy_from_json
+from swing_trading_system.market_regime import (
+    classify_market_regime,
+    regime_policy_from_json,
+)
 from swing_trading_system.repositories.shared_market import SharedMarketRepository
 
 WEB_DIR = Path(__file__).parent
@@ -37,6 +45,10 @@ BACKTEST_CONFIG_META: dict[str, dict[str, str]] = {
     "strategy": {
         "label": "Strategy",
         "tooltip": "저장된 signal 중 어떤 전략 조합을 실행할지 선택합니다.",
+    },
+    "strategy_selection": {
+        "label": "Strategy",
+        "tooltip": "이 백테스트 run에 적용된 전략 선택 프로필입니다.",
     },
     "symbols": {
         "label": "Symbols",
@@ -146,6 +158,11 @@ def _build_run_config_rows(report_summary: dict[str, object]) -> list[dict[str, 
 
     return [
         {
+            "label": BACKTEST_CONFIG_META["strategy_selection"]["label"],
+            "tooltip": BACKTEST_CONFIG_META["strategy_selection"]["tooltip"],
+            "value": _format_backtest_value(report_summary.get("strategy_label")),
+        },
+        {
             "label": BACKTEST_CONFIG_META["initial_final_equity"]["label"],
             "tooltip": BACKTEST_CONFIG_META["initial_final_equity"]["tooltip"],
             "value": (
@@ -216,9 +233,7 @@ def _build_run_config_rows(report_summary: dict[str, object]) -> list[dict[str, 
         {
             "label": BACKTEST_CONFIG_META["failed_trade_min_r_multiple"]["label"],
             "tooltip": BACKTEST_CONFIG_META["failed_trade_min_r_multiple"]["tooltip"],
-            "value": _format_backtest_value(
-                config.get("failed_trade_min_r_multiple")
-            ),
+            "value": _format_backtest_value(config.get("failed_trade_min_r_multiple")),
         },
         {
             "label": BACKTEST_CONFIG_META["fees_slippage_summary"]["label"],
@@ -354,6 +369,8 @@ def create_app(
             )
         try:
             config = _config_from_form(form_values)
+            strategy_profile = resolve_strategy_profile(form_values.get("strategy"))
+            config = apply_strategy_profile_config(config, strategy_profile)
             start_date = (
                 date.fromisoformat(form_values["start_date"])
                 if form_values.get("start_date")
@@ -365,8 +382,8 @@ def create_app(
                 else None
             )
             symbols = _parse_symbols(str(form_values.get("symbols") or ""))
-            strategy = _selected_strategy_filter(form_values)
-            require_market_regime = _is_market_regime_selection(form_values)
+            strategy = strategy_profile.signal_strategy_filter
+            require_market_regime = strategy_profile.require_market_regime
             repository = app.state.backtest_repository
             signals = repository.fetch_signals(
                 start_date=start_date,
@@ -388,7 +405,7 @@ def create_app(
                     require_vix=request.app.state.settings.swing_require_vix,
                     profile=request.app.state.settings.swing_regime_profile,
                 )
-                if require_market_regime
+                if strategy_profile.apply_regime_policy
                 else None
             )
             regime_by_date = (
@@ -399,7 +416,7 @@ def create_app(
                     app.state.settings,
                     config,
                 )
-                if require_market_regime
+                if strategy_profile.apply_regime_policy
                 else {}
             )
             result = BacktestEngine().run(
@@ -409,6 +426,8 @@ def create_app(
                 regime_by_date=regime_by_date,
                 regime_policy=regime_policy,
             )
+            result.metrics["strategy_selection"] = strategy_profile.key
+            result.metrics["strategy_label"] = strategy_profile.label
             repository.save_result(result)
         except Exception as exc:
             return templates.TemplateResponse(
@@ -448,9 +467,7 @@ def create_app(
         except Exception as exc:
             ui_warnings.append(f"chart regime unavailable: {type(exc).__name__}")
         try:
-            trades = _enrich_trade_sectors(
-                trades, app.state.shared_market_repository
-            )
+            trades = _enrich_trade_sectors(trades, app.state.shared_market_repository)
         except Exception as exc:
             ui_warnings.append(f"sector metadata unavailable: {type(exc).__name__}")
         total_pnl = (
@@ -532,6 +549,9 @@ def _build_report_summary(
         "max_drawdown": summary.get("max_drawdown") or metrics.get("max_drawdown"),
         "win_rate": summary.get("win_rate") or metrics.get("win_rate"),
         "profit_factor": summary.get("profit_factor") or metrics.get("profit_factor"),
+        "strategy_selection": metrics.get("strategy_selection"),
+        "strategy_label": metrics.get("strategy_label")
+        or _strategy_label_from_trades(trades),
         "sharpe_ratio": metrics.get("sharpe_ratio"),
         "cagr": metrics.get("cagr"),
         "calmar_ratio": metrics.get("calmar_ratio"),
@@ -595,6 +615,15 @@ def _slice_metrics(trades: list[dict[str, object]], key_fn) -> list[dict[str, ob
         }
         for name, values in sorted(grouped.items(), key=lambda item: item[0])
     ]
+
+
+def _strategy_label_from_trades(trades: list[dict[str, object]]) -> str:
+    strategies = sorted({_trade_strategy(trade) for trade in trades})
+    if not strategies:
+        return "-"
+    if strategies == ["breakout", "pullback", "quality_momentum"]:
+        return "전체 저장 signal"
+    return " + ".join(strategy.replace("_", " ").title() for strategy in strategies)
 
 
 def _trade_strategy(trade: dict[str, object]) -> str:
@@ -695,7 +724,7 @@ def _default_run_form(settings: Settings) -> dict[str, str]:
         "risk_profile": f"market_regime_{settings.swing_regime_profile}",
         "start_date": "2025-01-02",
         "end_date": "2026-05-01",
-        "strategy": "__market_regime__",
+        "strategy": "market_regime",
         "symbols": "",
         "initial_equity": str(settings.swing_account_equity),
         "fee_bps": str(settings.swing_fee_bps),
@@ -795,9 +824,7 @@ def _config_from_form(form_values: dict[str, str]) -> BacktestConfig:
         trailing_ma_days=int(float(form_values["trailing_ma_days"])),
         enable_breakeven_stop=bool(form_values.get("enable_breakeven_stop")),
         failed_trade_exit_days=int(float(form_values["failed_trade_exit_days"])),
-        failed_trade_min_r_multiple=float(
-            form_values["failed_trade_min_r_multiple"]
-        ),
+        failed_trade_min_r_multiple=float(form_values["failed_trade_min_r_multiple"]),
     )
 
 
@@ -830,43 +857,19 @@ def _parse_symbols(value: str) -> list[str] | None:
 
 
 def _strategy_options() -> list[dict[str, str]]:
-    return [
-        {
-            "value": "__market_regime__",
-            "label": "Market Regime Switching",
-        },
-        {"value": "", "label": "전체 저장 signal"},
-        {"value": "breakout", "label": "Breakout"},
-        {"value": "pullback", "label": "Pullback"},
-        {"value": "quality_momentum", "label": "Quality Momentum"},
-        {"value": "breakout+pullback", "label": "Breakout + Pullback"},
-        {
-            "value": "breakout+quality_momentum",
-            "label": "Breakout + Quality Momentum",
-        },
-        {
-            "value": "pullback+quality_momentum",
-            "label": "Pullback + Quality Momentum",
-        },
-    ]
+    return strategy_profiles_for_ui()
 
 
 def _strategy_option_label(value: str) -> str:
-    for option in _strategy_options():
-        if option["value"] == value:
-            return option["label"]
-    return "Custom"
+    return resolve_strategy_profile(value).label
 
 
 def _selected_strategy_filter(form_values: dict[str, str]) -> str | None:
-    strategy = str(form_values.get("strategy") or "")
-    if strategy == "__market_regime__":
-        return None
-    return strategy or None
+    return resolve_strategy_profile(form_values.get("strategy")).signal_strategy_filter
 
 
 def _is_market_regime_selection(form_values: dict[str, str]) -> bool:
-    return str(form_values.get("strategy") or "") == "__market_regime__"
+    return resolve_strategy_profile(form_values.get("strategy")).require_market_regime
 
 
 def _regime_payload(value: object) -> dict[str, object]:
@@ -1131,11 +1134,15 @@ def _build_equity_chart(
                 if benchmark_value > 0
                 else None,
                 "date": str(point.get("equity_date") or ""),
-                "strategy_value": round(strategy_value, 2) if strategy_value > 0 else None,
+                "strategy_value": round(strategy_value, 2)
+                if strategy_value > 0
+                else None,
                 "benchmark_value": round(benchmark_value, 2)
                 if benchmark_value > 0
                 else None,
-                "regime_id": regime_by_date.get(str(point.get("equity_date")) or "", "-"),
+                "regime_id": regime_by_date.get(
+                    str(point.get("equity_date")) or "", "-"
+                ),
             }
         )
 

@@ -63,7 +63,9 @@ class BacktestEngine:
         metrics = calculate_metrics(trades, equity_curve, config.initial_equity)
         metrics.update(self._benchmark_metrics(equity_curve, metrics["total_return"]))
         metrics["rejection_count"] = len(rejections)
-        metrics["duplicate_signal_rejections"] = sum(1 for rejection in rejections if rejection.reason == "duplicate_signal")
+        metrics["duplicate_signal_rejections"] = sum(
+            1 for rejection in rejections if rejection.reason == "duplicate_signal"
+        )
         return BacktestResult(
             run_id=run_id,
             config=config,
@@ -72,19 +74,34 @@ class BacktestEngine:
             rejections=tuple(rejections),
             metrics=metrics,
             signal_count=len(input_signals),
-            signal_start_date=min((signal.signal_date for signal in input_signals), default=None),
-            signal_end_date=max((signal.signal_date for signal in input_signals), default=None),
+            signal_start_date=min(
+                (signal.signal_date for signal in input_signals), default=None
+            ),
+            signal_end_date=max(
+                (signal.signal_date for signal in input_signals), default=None
+            ),
         )
 
     @staticmethod
     def generate_run_id() -> str:
         return f"bt-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}"
 
-    def _dedupe_signals(self, signals: Sequence[BacktestSignal]) -> tuple[list[BacktestSignal], list[BacktestRejection]]:
+    def _dedupe_signals(
+        self, signals: Sequence[BacktestSignal]
+    ) -> tuple[list[BacktestSignal], list[BacktestRejection]]:
         seen: set[tuple[object, ...]] = set()
         unique: list[BacktestSignal] = []
         rejections: list[BacktestRejection] = []
-        for signal in sorted(signals, key=lambda item: (item.signal_date, -(item.score or 0.0), item.symbol, item.strategy, item.id)):
+        for signal in sorted(
+            signals,
+            key=lambda item: (
+                item.signal_date,
+                -(item.score or 0.0),
+                item.symbol,
+                item.strategy,
+                item.id,
+            ),
+        ):
             key = (
                 signal.symbol,
                 signal.strategy,
@@ -94,7 +111,9 @@ class BacktestEngine:
                 round(signal.target_price, 6),
             )
             if key in seen:
-                rejections.append(BacktestRejection(signal.id, signal.symbol, "duplicate_signal"))
+                rejections.append(
+                    BacktestRejection(signal.id, signal.symbol, "duplicate_signal")
+                )
                 continue
             seen.add(key)
             unique.append(signal)
@@ -123,20 +142,32 @@ class BacktestEngine:
             max_positions = min(max_positions, rule.max_positions)
         if max_positions >= 0 and len(open_trades) >= max_positions:
             return BacktestRejection(signal.id, signal.symbol, "max_positions_exceeded")
+        if self._stop_loss_cooldown_active(trade, accepted_trades, config):
+            return BacktestRejection(signal.id, signal.symbol, "stop_loss_cooldown")
         max_exposure = config.initial_equity * config.max_gross_exposure_pct
-        existing_exposure = sum(accepted.entry_price * accepted.quantity for accepted in open_trades)
+        existing_exposure = sum(
+            accepted.entry_price * accepted.quantity for accepted in open_trades
+        )
         trade_exposure = trade.entry_price * trade.quantity
         if max_exposure > 0 and existing_exposure + trade_exposure > max_exposure:
-            return BacktestRejection(signal.id, signal.symbol, "gross_exposure_exceeded")
+            return BacktestRejection(
+                signal.id, signal.symbol, "gross_exposure_exceeded"
+            )
         max_portfolio_risk_pct = config.max_portfolio_risk_pct
         if rule is not None and rule.max_portfolio_risk_pct is not None:
-            max_portfolio_risk_pct = min(max_portfolio_risk_pct, rule.max_portfolio_risk_pct)
+            max_portfolio_risk_pct = min(
+                max_portfolio_risk_pct, rule.max_portfolio_risk_pct
+            )
         max_portfolio_risk = config.initial_equity * max(0.0, max_portfolio_risk_pct)
         if max_portfolio_risk >= 0:
-            existing_risk = sum(_trade_initial_risk(accepted) for accepted in open_trades)
+            existing_risk = sum(
+                _trade_initial_risk(accepted) for accepted in open_trades
+            )
             trade_risk = max(0.0, signal.risk_per_share) * trade.quantity
             if existing_risk + trade_risk > max_portfolio_risk:
-                return BacktestRejection(signal.id, signal.symbol, "portfolio_heat_exceeded")
+                return BacktestRejection(
+                    signal.id, signal.symbol, "portfolio_heat_exceeded"
+                )
         return None
 
     def _simulate_signal(
@@ -148,11 +179,16 @@ class BacktestEngine:
         regime_by_date: Mapping[date, str],
         regime_policy: RegimePolicy | None,
     ) -> tuple[BacktestTrade | None, BacktestRejection | None]:
-        prices = sorted((bar for bar in price_rows if bar.trade_date > signal.signal_date), key=lambda bar: bar.trade_date)
+        prices = sorted(
+            (bar for bar in price_rows if bar.trade_date > signal.signal_date),
+            key=lambda bar: bar.trade_date,
+        )
         if not prices:
             return None, BacktestRejection(signal.id, signal.symbol, "missing_next_bar")
         if len(prices) < 2:
-            return None, BacktestRejection(signal.id, signal.symbol, "insufficient_future_bars")
+            return None, BacktestRejection(
+                signal.id, signal.symbol, "insufficient_future_bars"
+            )
 
         entry_bar = prices[0]
         slippage = config.slippage_bps / 10_000.0
@@ -160,7 +196,9 @@ class BacktestEngine:
         entry_price = entry_bar.open * (1.0 + slippage)
         quantity = self._sized_quantity(signal, entry_price, config)
         if quantity <= 0:
-            return None, BacktestRejection(signal.id, signal.symbol, "invalid_position_size")
+            return None, BacktestRejection(
+                signal.id, signal.symbol, "invalid_position_size"
+            )
 
         exit_legs: list[dict[str, Any]] = []
         remaining_quantity = quantity
@@ -213,17 +251,41 @@ class BacktestEngine:
                     remaining_quantity = 0.0
                     break
                 if stop_hit:
-                    reason = "stop_loss_same_bar_conservative" if target_hit else "stop_loss"
-                    exit_legs.append(self._exit_leg(bar, remaining_quantity, signal.stop_price, slippage, fee_rate, reason))
+                    reason = (
+                        "stop_loss_same_bar_conservative" if target_hit else "stop_loss"
+                    )
+                    exit_legs.append(
+                        self._exit_leg(
+                            bar,
+                            remaining_quantity,
+                            signal.stop_price,
+                            slippage,
+                            fee_rate,
+                            reason,
+                        )
+                    )
                     remaining_quantity = 0.0
                     break
                 if target_hit:
                     scale_out_pct = min(max(config.target_scale_out_pct, 0.0), 1.0)
                     has_future_bar = days_held < len(prices) - 1
                     scale_quantity = remaining_quantity
-                    if config.enable_trailing_stop and has_future_bar and 0.0 < scale_out_pct < 1.0:
+                    if (
+                        config.enable_trailing_stop
+                        and has_future_bar
+                        and 0.0 < scale_out_pct < 1.0
+                    ):
                         scale_quantity = remaining_quantity * scale_out_pct
-                    exit_legs.append(self._exit_leg(bar, scale_quantity, signal.target_price, slippage, fee_rate, "target"))
+                    exit_legs.append(
+                        self._exit_leg(
+                            bar,
+                            scale_quantity,
+                            signal.target_price,
+                            slippage,
+                            fee_rate,
+                            "target",
+                        )
+                    )
                     remaining_quantity = max(0.0, remaining_quantity - scale_quantity)
                     target_scaled = remaining_quantity > 0
                     if not target_scaled:
@@ -253,30 +315,64 @@ class BacktestEngine:
                     remaining_quantity = 0.0
                     break
             else:
-                trailing_stop = self._trailing_stop(prices, days_held, config.trailing_ma_days)
+                trailing_stop = self._trailing_stop(
+                    prices, days_held, config.trailing_ma_days
+                )
                 if trailing_stop is not None and bar.low <= trailing_stop:
-                    exit_legs.append(self._exit_leg(bar, remaining_quantity, trailing_stop, slippage, fee_rate, "trailing_stop"))
+                    exit_legs.append(
+                        self._exit_leg(
+                            bar,
+                            remaining_quantity,
+                            trailing_stop,
+                            slippage,
+                            fee_rate,
+                            "trailing_stop",
+                        )
+                    )
                     remaining_quantity = 0.0
                     break
             if days_held >= config.max_hold_days:
                 reason = "target_then_max_hold" if target_scaled else "max_hold"
-                exit_legs.append(self._exit_leg(bar, remaining_quantity, bar.close, slippage, fee_rate, reason))
+                exit_legs.append(
+                    self._exit_leg(
+                        bar, remaining_quantity, bar.close, slippage, fee_rate, reason
+                    )
+                )
                 remaining_quantity = 0.0
                 break
         if remaining_quantity > 0:
             reason = "target_then_end_of_data" if target_scaled else "end_of_data"
-            exit_legs.append(self._exit_leg(prices[-1], remaining_quantity, prices[-1].close, slippage, fee_rate, reason))
+            exit_legs.append(
+                self._exit_leg(
+                    prices[-1],
+                    remaining_quantity,
+                    prices[-1].close,
+                    slippage,
+                    fee_rate,
+                    reason,
+                )
+            )
 
         entry_notional = entry_price * quantity
         entry_fee = entry_notional * fee_rate
         exit_notional = sum(leg["price"] * leg["quantity"] for leg in exit_legs)
         exit_fees = sum(leg["fee"] for leg in exit_legs)
         fees = entry_fee + exit_fees
-        pnl = sum((leg["price"] - entry_price) * leg["quantity"] for leg in exit_legs) - fees
+        pnl = (
+            sum((leg["price"] - entry_price) * leg["quantity"] for leg in exit_legs)
+            - fees
+        )
         exit_price = exit_notional / quantity if quantity else 0.0
         exit_bar = prices[-1]
         if exit_legs:
-            exit_bar = next((bar for bar in prices if bar.trade_date.isoformat() == exit_legs[-1]["date"]), prices[-1])
+            exit_bar = next(
+                (
+                    bar
+                    for bar in prices
+                    if bar.trade_date.isoformat() == exit_legs[-1]["date"]
+                ),
+                prices[-1],
+            )
         exit_reason = self._combined_exit_reason(exit_legs)
         return (
             BacktestTrade(
@@ -337,16 +433,61 @@ class BacktestEngine:
         rule = regime_policy.rule_for(regime_id)
         return bool(rule is not None and rule.risk_off_exit)
 
-    def _sized_quantity(self, signal: BacktestSignal, entry_price: float, config: BacktestConfig) -> float:
+    def _sized_quantity(
+        self, signal: BacktestSignal, entry_price: float, config: BacktestConfig
+    ) -> float:
         quantity = max(0.0, signal.position_size)
         if signal.strategy == "pullback":
             quantity *= max(0.0, config.pullback_size_multiplier)
+        quantity *= self._regime_strategy_multiplier(signal, config)
         if config.max_position_pct > 0 and entry_price > 0:
-            max_quantity = (config.initial_equity * config.max_position_pct) / entry_price
+            max_quantity = (
+                config.initial_equity * config.max_position_pct
+            ) / entry_price
             quantity = min(quantity, max_quantity)
         return quantity
 
-    def _exit_leg(self, bar: PriceBar, quantity: float, raw_price: float, slippage: float, fee_rate: float, reason: str) -> dict[str, Any]:
+    def _regime_strategy_multiplier(
+        self, signal: BacktestSignal, config: BacktestConfig
+    ) -> float:
+        regime_id = _signal_regime_id(signal)
+        if not regime_id:
+            return 1.0
+        strategy_multipliers = config.regime_strategy_multipliers.get(regime_id)
+        if not strategy_multipliers:
+            return 1.0
+        return max(0.0, float(strategy_multipliers.get(signal.strategy, 1.0)))
+
+    def _stop_loss_cooldown_active(
+        self,
+        trade: BacktestTrade,
+        accepted_trades: Sequence[BacktestTrade],
+        config: BacktestConfig,
+    ) -> bool:
+        lookback_days = max(0, config.stop_loss_cooldown_lookback_days)
+        threshold = max(0, config.stop_loss_cooldown_threshold)
+        if lookback_days <= 0 or threshold <= 0:
+            return False
+        window_start = trade.entry_date.toordinal() - lookback_days
+        stop_loss_count = sum(
+            1
+            for accepted in accepted_trades
+            if window_start
+            <= accepted.exit_date.toordinal()
+            < trade.entry_date.toordinal()
+            and accepted.exit_reason.startswith("stop_loss")
+        )
+        return stop_loss_count >= threshold
+
+    def _exit_leg(
+        self,
+        bar: PriceBar,
+        quantity: float,
+        raw_price: float,
+        slippage: float,
+        fee_rate: float,
+        reason: str,
+    ) -> dict[str, Any]:
         exit_price = raw_price * (1.0 - slippage)
         return {
             "date": bar.trade_date.isoformat(),
@@ -356,11 +497,15 @@ class BacktestEngine:
             "fee": max(0.0, quantity) * exit_price * fee_rate,
         }
 
-    def _trailing_stop(self, prices: Sequence[PriceBar], current_index: int, trailing_ma_days: int) -> float | None:
+    def _trailing_stop(
+        self, prices: Sequence[PriceBar], current_index: int, trailing_ma_days: int
+    ) -> float | None:
         if trailing_ma_days <= 0:
             return None
         start = max(0, current_index - trailing_ma_days)
-        closes = [bar.close for bar in prices[start:current_index] if bar.close is not None]
+        closes = [
+            bar.close for bar in prices[start:current_index] if bar.close is not None
+        ]
         if not closes:
             return None
         return sum(closes) / len(closes)
@@ -404,10 +549,14 @@ class BacktestEngine:
         for trade in trades:
             trades_by_exit_date.setdefault(trade.exit_date, []).append(trade)
         previous_equity = initial_equity
-        benchmark_state = self._benchmark_state(prices_by_symbol.get(benchmark_symbol, ()), curve_dates, initial_equity)
+        benchmark_state = self._benchmark_state(
+            prices_by_symbol.get(benchmark_symbol, ()), curve_dates, initial_equity
+        )
         for equity_date in curve_dates:
             equity = initial_equity + sum(
-                self._trade_mark_to_market(trade, equity_date, prices_by_symbol.get(trade.symbol, ()))
+                self._trade_mark_to_market(
+                    trade, equity_date, prices_by_symbol.get(trade.symbol, ())
+                )
                 for trade in trades
             )
             peak = max(peak, equity)
@@ -423,7 +572,11 @@ class BacktestEngine:
                     details={
                         "daily_pnl": round(equity - previous_equity, 6),
                         "trade_count": len(date_trades),
-                        "open_trade_count": sum(1 for trade in trades if trade.entry_date <= equity_date <= trade.exit_date),
+                        "open_trade_count": sum(
+                            1
+                            for trade in trades
+                            if trade.entry_date <= equity_date <= trade.exit_date
+                        ),
                         "symbols": [trade.symbol for trade in date_trades],
                         "exit_reasons": [trade.exit_reason for trade in date_trades],
                         **benchmark_details,
@@ -433,7 +586,9 @@ class BacktestEngine:
             previous_equity = equity
         return curve
 
-    def _trade_mark_to_market(self, trade: BacktestTrade, as_of_date: date, price_rows: Sequence[PriceBar]) -> float:
+    def _trade_mark_to_market(
+        self, trade: BacktestTrade, as_of_date: date, price_rows: Sequence[PriceBar]
+    ) -> float:
         if as_of_date < trade.entry_date:
             return 0.0
         if as_of_date >= trade.exit_date:
@@ -452,7 +607,9 @@ class BacktestEngine:
         unrealized_pnl = (mark_price - trade.entry_price) * remaining_quantity
         return realized_pnl + unrealized_pnl - entry_fee
 
-    def _exit_legs_until(self, trade: BacktestTrade, as_of_date: date) -> list[dict[str, Any]]:
+    def _exit_legs_until(
+        self, trade: BacktestTrade, as_of_date: date
+    ) -> list[dict[str, Any]]:
         legs = (trade.details or {}).get("exit_legs")
         if not isinstance(legs, list):
             return []
@@ -465,10 +622,14 @@ class BacktestEngine:
                 eligible.append(leg)
         return eligible
 
-    def _latest_close(self, price_rows: Sequence[PriceBar], as_of_date: date) -> float | None:
+    def _latest_close(
+        self, price_rows: Sequence[PriceBar], as_of_date: date
+    ) -> float | None:
         latest: PriceBar | None = None
         for bar in price_rows:
-            if bar.trade_date <= as_of_date and (latest is None or latest.trade_date < bar.trade_date):
+            if bar.trade_date <= as_of_date and (
+                latest is None or latest.trade_date < bar.trade_date
+            ):
                 latest = bar
         return latest.close if latest is not None else None
 
@@ -481,7 +642,9 @@ class BacktestEngine:
         if not benchmark_prices or not curve_dates:
             return {}
         ordered = sorted(benchmark_prices, key=lambda item: item.trade_date)
-        start_close = self._latest_close(ordered, curve_dates[0]) or next((bar.close for bar in ordered if bar.trade_date >= curve_dates[0]), None)
+        start_close = self._latest_close(ordered, curve_dates[0]) or next(
+            (bar.close for bar in ordered if bar.trade_date >= curve_dates[0]), None
+        )
         if not start_close:
             return {}
         peak = initial_equity
@@ -500,7 +663,9 @@ class BacktestEngine:
             }
         return state
 
-    def _benchmark_metrics(self, equity_curve: Sequence[EquityCurvePoint], strategy_return: float) -> dict[str, float | None]:
+    def _benchmark_metrics(
+        self, equity_curve: Sequence[EquityCurvePoint], strategy_return: float
+    ) -> dict[str, float | None]:
         points = [
             point
             for point in equity_curve
@@ -515,10 +680,18 @@ class BacktestEngine:
             }
         initial_benchmark = float(points[0].details["benchmark_equity"])
         final_benchmark = float(points[-1].details["benchmark_equity"])
-        benchmark_return = (final_benchmark / initial_benchmark) - 1.0 if initial_benchmark else 0.0
-        benchmark_mdd = min(float(point.details.get("benchmark_drawdown", 0.0)) for point in points)
+        benchmark_return = (
+            (final_benchmark / initial_benchmark) - 1.0 if initial_benchmark else 0.0
+        )
+        benchmark_mdd = min(
+            float(point.details.get("benchmark_drawdown", 0.0)) for point in points
+        )
         elapsed_days = max(1, (points[-1].equity_date - points[0].equity_date).days)
-        benchmark_cagr = (final_benchmark / initial_benchmark) ** (365.0 / elapsed_days) - 1.0 if initial_benchmark and final_benchmark > 0 else 0.0
+        benchmark_cagr = (
+            (final_benchmark / initial_benchmark) ** (365.0 / elapsed_days) - 1.0
+            if initial_benchmark and final_benchmark > 0
+            else 0.0
+        )
         return {
             "benchmark_return": round(benchmark_return, 8),
             "benchmark_mdd": round(benchmark_mdd, 8),
@@ -540,8 +713,14 @@ def _parse_date(value: object) -> date | None:
 
 def _signal_regime_id(signal: BacktestSignal) -> str | None:
     details = signal.details if isinstance(signal.details, dict) else {}
-    direct = details.get("market_regime") if isinstance(details.get("market_regime"), dict) else {}
-    features = details.get("features") if isinstance(details.get("features"), dict) else {}
+    direct = (
+        details.get("market_regime")
+        if isinstance(details.get("market_regime"), dict)
+        else {}
+    )
+    features = (
+        details.get("features") if isinstance(details.get("features"), dict) else {}
+    )
     feature_regime = (
         features.get("market_regime")
         if isinstance(features.get("market_regime"), dict)

@@ -162,6 +162,7 @@ class FailingBacktestRepository:
 class FakeBacktestRepository:
     def __init__(self) -> None:
         self.saved_run_id = None
+        self.saved_result = None
 
     def count_signals(self):
         return 1
@@ -172,6 +173,9 @@ class FakeBacktestRepository:
                 "run_id": "r1",
                 "trade_count": 1,
                 "total_pnl": 10,
+                "strategy_label": "Stable Alpha Hybrid",
+                "cagr": 0.12,
+                "max_drawdown": -0.08,
                 "start_date": date(2026, 1, 2),
                 "end_date": date(2026, 1, 3),
             }
@@ -214,6 +218,7 @@ class FakeBacktestRepository:
 
     def save_result(self, result):
         self.saved_run_id = result.run_id
+        self.saved_result = result
         return {
             "trades_saved": len(result.trades),
             "equity_points_saved": len(result.equity_curve),
@@ -301,6 +306,8 @@ class FakeBacktestRepository:
                 "sharpe_ratio": 1.2,
                 "cagr": 0.02,
                 "calmar_ratio": 2,
+                "strategy_selection": "stable_alpha_hybrid",
+                "strategy_label": "Stable Alpha Hybrid",
                 "average_hold_days": 1,
                 "max_consecutive_wins": 1,
                 "max_consecutive_losses": 0,
@@ -340,10 +347,17 @@ def test_index_signals_and_backtests_routes_render() -> None:
     assert "AAA" in c.get("/signals").text
     assert "R2_VOLATILE_BULL" in c.get("/signals").text
     assert c.get("/backtests").status_code == 200
-    assert "r1" in c.get("/backtests").text
+    backtests = c.get("/backtests").text
+    assert "r1" in backtests
+    assert "Stable Alpha Hybrid" in backtests
+    assert "CAGR" in backtests
+    assert "MDD" in backtests
+    assert "12.00%" in backtests
+    assert "-8.00%" in backtests
     detail = c.get("/backtests/r1")
     assert detail.status_code == 200
     assert "Strategy vs SPY" in detail.text
+    assert "Stable Alpha Hybrid" in detail.text
     assert 'class="chart-legend"' in detail.text
     assert 'class="equity-chart-tooltip"' in detail.text
     assert 'data-date="2026-01-03"' in detail.text
@@ -364,14 +378,21 @@ def test_index_signals_and_backtests_routes_render() -> None:
     assert "Failed Exit R" in detail.text
     assert "Breakeven Stop" in detail.text
     assert "사용" in detail.text
-    assert 'title="열린 포지션의 초기 손절 위험 합계 한도입니다. 0.06은 초기자본의 6%입니다."' in detail.text
+    assert (
+        'title="열린 포지션의 초기 손절 위험 합계 한도입니다. 0.06은 초기자본의 6%입니다."'
+        in detail.text
+    )
     assert c.get("/backtests/run").status_code == 200
     run_page = c.get("/backtests/run")
     assert "백테스트 실행" in run_page.text
     assert "Market Regime Switching" in run_page.text
+    assert "Stable Alpha Hybrid" in run_page.text
     assert 'title="백테스트에 포함할 signal 탐색 시작일입니다."' in run_page.text
     assert 'title="Pullback 전략 진입 수량에 적용하는 배율입니다."' in run_page.text
-    assert 'title="+1R 도달 후 손절선을 진입가로 올려 손실 거래 전환을 줄입니다."' in run_page.text
+    assert (
+        'title="+1R 도달 후 손절선을 진입가로 올려 손실 거래 전환을 줄입니다."'
+        in run_page.text
+    )
     assert c.get("/static/css/app.css").status_code == 200
 
 
@@ -389,6 +410,28 @@ def test_backtest_run_form_validates_and_redirects() -> None:
     )
     assert valid.status_code == 303
     assert "/backtests/" in valid.headers["location"]
+
+
+def test_backtest_run_form_accepts_stable_alpha_hybrid() -> None:
+    repo = FakeBacktestRepository()
+    c = TestClient(create_app(FakeSharedRepository(), repo))
+
+    response = c.post(
+        "/backtests/run",
+        data={
+            "start_date": "2026-01-01",
+            "end_date": "2026-01-01",
+            "strategy": "stable_alpha_hybrid",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert repo.saved_result is not None
+    assert repo.saved_result.config.max_gross_exposure_pct == 1.2
+    assert repo.saved_result.config.max_portfolio_risk_pct == 0.07
+    assert repo.saved_result.config.stop_loss_cooldown_threshold == 6
+    assert repo.saved_result.metrics["strategy_label"] == "Stable Alpha Hybrid"
 
 
 def test_index_renders_degraded_state_when_dependencies_fail() -> None:

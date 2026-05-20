@@ -16,9 +16,16 @@ from swing_trading_system.backtest.optimizer import (
     optimize_backtest,
 )
 from swing_trading_system.backtest.repository import BacktestRepository
+from swing_trading_system.backtest.strategy_profiles import (
+    apply_strategy_profile_config,
+    resolve_strategy_profile,
+)
 from swing_trading_system.config import Settings
 from swing_trading_system.db import check_database_connection, initialize_schema
-from swing_trading_system.market_regime import classify_market_regime, regime_policy_from_json
+from swing_trading_system.market_regime import (
+    classify_market_regime,
+    regime_policy_from_json,
+)
 from swing_trading_system.repositories.shared_market import SharedMarketRepository
 from swing_trading_system.repositories.swing_repository import SwingRepository
 from swing_trading_system.screening.input_loader import ScreeningInputLoader
@@ -142,9 +149,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_OPTIMIZE_END_DATE.isoformat(),
         help="Signal end date YYYY-MM-DD",
     )
-    optimize_backtest_parser.add_argument(
-        "--symbols", help="Comma-separated symbols"
-    )
+    optimize_backtest_parser.add_argument("--symbols", help="Comma-separated symbols")
     optimize_backtest_parser.add_argument(
         "--persist-winners",
         action="store_true",
@@ -280,7 +285,8 @@ def handle_run_backtest(
     args: argparse.Namespace, settings: Settings | None = None
 ) -> tuple[int, dict[str, Any]]:
     settings = settings or Settings()
-    require_market_regime = _is_market_regime_strategy(args.strategy)
+    strategy_profile = resolve_strategy_profile(args.strategy)
+    require_market_regime = strategy_profile.require_market_regime
     config = BacktestConfig(
         initial_equity=args.initial_equity or settings.swing_account_equity,
         fee_bps=args.fee_bps if args.fee_bps is not None else settings.swing_fee_bps,
@@ -325,9 +331,7 @@ def handle_run_backtest(
             if getattr(args, "trailing_ma_days", None) is not None
             else settings.swing_trailing_ma_days
         ),
-        enable_breakeven_stop=not bool(
-            getattr(args, "disable_breakeven_stop", False)
-        ),
+        enable_breakeven_stop=not bool(getattr(args, "disable_breakeven_stop", False)),
         failed_trade_exit_days=(
             getattr(args, "failed_trade_exit_days", None)
             if getattr(args, "failed_trade_exit_days", None) is not None
@@ -339,11 +343,16 @@ def handle_run_backtest(
             else BacktestConfig().failed_trade_min_r_multiple
         ),
     )
+    config = apply_strategy_profile_config(
+        config,
+        strategy_profile,
+        skip_fields=_explicit_backtest_config_fields(args),
+    )
     repository = BacktestRepository(settings)
     start_date = date.fromisoformat(args.start_date) if args.start_date else None
     end_date = date.fromisoformat(args.end_date) if args.end_date else None
     symbols = _parse_symbols(args.symbols)
-    strategy = None if require_market_regime else args.strategy
+    strategy = strategy_profile.signal_strategy_filter
     signals = repository.fetch_signals(
         start_date=start_date,
         end_date=end_date,
@@ -364,12 +373,12 @@ def handle_run_backtest(
             require_vix=settings.swing_require_vix,
             profile=settings.swing_regime_profile,
         )
-        if require_market_regime
+        if strategy_profile.apply_regime_policy
         else None
     )
     regime_by_date = (
         _backtest_regime_by_date(signals, prices, settings, config)
-        if require_market_regime
+        if strategy_profile.apply_regime_policy
         else {}
     )
     result = BacktestEngine().run(
@@ -379,6 +388,8 @@ def handle_run_backtest(
         regime_by_date=regime_by_date,
         regime_policy=regime_policy,
     )
+    result.metrics["strategy_selection"] = strategy_profile.key
+    result.metrics["strategy_label"] = strategy_profile.label
     saved = {"trades_saved": 0, "equity_points_saved": 0}
     if not args.dry_run:
         saved = repository.save_result(result)
@@ -389,6 +400,8 @@ def handle_run_backtest(
             "dry_run": args.dry_run,
             "run_id": result.run_id,
             "market_regime_required": require_market_regime,
+            "strategy_selection": strategy_profile.key,
+            "strategy_label": strategy_profile.label,
             "signal_count": len(signals),
             "signal_start_date": result.signal_start_date,
             "signal_end_date": result.signal_end_date,
@@ -421,10 +434,30 @@ def handle_optimize_backtest(
 
 
 def _is_market_regime_strategy(strategy: str | None) -> bool:
-    return (strategy or "").strip().lower() in {
-        "__market_regime__",
-        "market_regime",
-        "market-regime",
+    return resolve_strategy_profile(strategy).require_market_regime
+
+
+def _explicit_backtest_config_fields(args: argparse.Namespace) -> set[str]:
+    arg_to_field = {
+        "initial_equity": "initial_equity",
+        "fee_bps": "fee_bps",
+        "slippage_bps": "slippage_bps",
+        "max_hold_days": "max_hold_days",
+        "max_positions": "max_positions",
+        "max_gross_exposure_pct": "max_gross_exposure_pct",
+        "max_position_pct": "max_position_pct",
+        "max_portfolio_risk_pct": "max_portfolio_risk_pct",
+        "pullback_size_multiplier": "pullback_size_multiplier",
+        "benchmark_symbol": "benchmark_symbol",
+        "target_scale_out_pct": "target_scale_out_pct",
+        "trailing_ma_days": "trailing_ma_days",
+        "failed_trade_exit_days": "failed_trade_exit_days",
+        "failed_trade_min_r_multiple": "failed_trade_min_r_multiple",
+    }
+    return {
+        field
+        for arg_name, field in arg_to_field.items()
+        if getattr(args, arg_name, None) is not None
     }
 
 
